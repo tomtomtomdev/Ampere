@@ -4,13 +4,14 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M1 done — scoring core + Pareto frontier implemented **test-first** and green
-(ruff clean + 41 tests: 6 smoke, 22 scoring, 13 frontier). `domain/scoring.py` and
-`domain/frontier.py` are live, pure, deterministic, zero I/O. `domain/resolve.py` +
-`application/` remain stubbed (`NotImplementedError`) awaiting M2/M3 TDD.
-**Next action:** M2 (entity resolution — `clean_title` + `resolve` in `domain/resolve.py`),
-test-first from SPEC §7, leaning on the `id-android-market` skill for the ID-market ruleset.
-Target ≥85% auto-resolve on a ~50-title fixture; misses → needs-mapping queue.
+**Phase:** M2 done — entity resolution implemented **test-first** and green (ruff clean + 69
+tests: 4 smoke, scoring+frontier as before, 30 resolve). `domain/scoring.py`, `domain/frontier.py`
+and `domain/resolve.py` are all live, pure, deterministic, zero I/O. `application/` (`run_daily`,
+`refresh_catalog`) + all `adapters/repos` remain stubbed awaiting M3.
+**Next action:** M3 (persistence + daily use-case — SQLite repos behind the `ports`, then wire
+`run_daily`: FixtureSource → resolve → effective_price → **dedup cheapest-per-SKU** (§5.8) → score
+→ persist → diff vs prior snapshot). Idempotent + transactional per `snapshot_date` (SC6). TDD
+against `FixtureSource` + in-memory SQLite.
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12). `uv pip install -e ".[dev,web]"`.
 
 ## Milestone tracker
@@ -19,7 +20,7 @@ Target ≥85% auto-resolve on a ~50-title fixture; misses → needs-mapping queu
 |----|-----------------------------------|---------|-------|
 | M0 | Skeleton + framework docs         | ✅ done  | repo, schema, FixtureSource, stubs, design shell — green |
 | M1 | Scoring core (pure)               | ✅ done  | normalize/perf/batt/cap/value + Pareto frontier; TDD, deterministic, ruff-clean |
-| M2 | Entity resolution                 | ☐ todo  | ≥85% auto-resolve target; alias table |
+| M2 | Entity resolution                 | ✅ done  | clean_title + resolve; 100% on 21-title golden set (≥85% SC2); alias override + needs-mapping |
 | M3 | Persistence + daily use-case      | ☐ todo  | snapshot diffing; new arrivals/price drops |
 | M4 | Web UI (5 menu screens)           | ☐ todo  | Pareto scatter; weight sliders live re-score |
 | M5 | Real Shopee source                | ☐ todo  | affiliate feed preferred; internal best-effort |
@@ -27,6 +28,35 @@ Target ≥85% auto-resolve on a ~50-title fixture; misses → needs-mapping queu
 
 ## Decisions log
 
+- **M2 entity resolution done (2026-07-13):**
+  - `clean_title` + `resolve` in `domain/resolve.py`, **test-first** from SPEC §7 (30 tests,
+    `tests/test_resolve.py`). Pure/deterministic/zero-I/O; `DeviceCatalogPort`/`AliasCatalogPort`
+    injected so the domain stays clean.
+  - **New data module `ampere/domain/lexicon.py`** = runtime transcription of the
+    `id-android-market` skill refs (brands/lexicon). The **skill stays the source of record**
+    (CLAUDE.md); lexicon.py is the config.py-style *data* counterpart so resolve.py holds no
+    hard-coded brand regexes. Grow rules in the skill first, reflect them here.
+  - **Pipeline:** condition-**first** (precedence refurb>used>new; default `unknown` — never
+    assume new, skill pitfall) → collapse multi-word brand phrases → strip spec phrases
+    (`Snapdragon 4 Gen 2`/`Helio G99`/`108MP`/`5000mAh`/`99%`) so embedded digits don't leak →
+    extract variant → classify remaining tokens (noise/trust/color/qualifier/brand) → model =
+    identity residue.
+  - **Variant:** RAM vs ROM by **magnitude not position** (`256/8`→`8/256`); `+`/`gb`/`ram..rom`
+    forms normalized; qualifiers `5G`/`NFC` appended to the variant; bare ROM → partial `?/256`
+    (never invent RAM — invariant #4).
+  - **Matching:** `rapidfuzz.token_sort_ratio` (NOT token_set — token_set collapses a subset like
+    `Note 13`→`Note 13 Pro` to 100; skill pitfall #4), over **dedup'd tokens** (neutralizes the
+    brand-repeat artifact from `realme realme C67` / a query that re-prepends the brand). Brand
+    narrows candidates, **widening to all on an empty bucket**. Threshold 85 (arg). Alias override
+    short-circuits fuzzy (score 100). **Sub-brands** Redmi/POCO → brand `Xiaomi` but the token is
+    kept in the model so the family still matches.
+  - **`match_score`** = best candidate score (accepted match, or top near-miss for a UI hint),
+    `None` if no candidates. `device_id=None` ⇒ needs-mapping queue.
+  - **Golden set = the 23 design listings** (L01–L23, `design/Ampere.dc.html`): 21 matchable +
+    2 deliberately unresolvable. **100% correct** on the 21 (clears the ≥85% SC2/DoD bar), both
+    "HP Android …"/"Smartphone Android …" → `None`. Condition asserted from **title tokens only**
+    (Mall→new is an M3 assumption, not the resolver's).
+  - Removed the M0 smoke stub-guard for `resolve.*` (now implemented). Not committed (awaiting user).
 - **M1 scoring core done (2026-07-13):**
   - Ported the scoring/frontier math from `design/Ampere.dc.html` **test-first** (not pasted):
     `domain/scoring.py` (`normalize`, `performance`, `battery`, `capability`, `value`) +

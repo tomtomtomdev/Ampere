@@ -3,20 +3,17 @@
   * every layer imports (Clean-Architecture package tree is intact),
   * the SQLite schema creates,
   * FixtureSource returns a canned, in-band, source-agnostic listing set,
-  * scoring config is internally consistent,
-  * M2/M3 logic is still stubbed (NotImplementedError) — TDD comes next, not now (invariant #2).
+  * scoring config is internally consistent.
 
-M1 scoring/frontier is now implemented and exercised in ``test_scoring.py`` / ``test_frontier.py``;
-this file stays scoped to the M0 skeleton DoD.
+M1 scoring/frontier lives in ``test_scoring.py`` / ``test_frontier.py`` and M2 entity resolution
+in ``test_resolve.py``; this file stays scoped to the M0 skeleton DoD.
 """
 
 from __future__ import annotations
 
-import pytest
 from ampere import config
 from ampere.adapters.repos import db
 from ampere.adapters.sources.fixture_source import FixtureSource
-from ampere.domain import resolve
 from ampere.domain.models import RawListing
 from ampere.ports.search_source import SearchSource
 
@@ -62,16 +59,3 @@ def test_scoring_config_is_consistent():
     assert config.SCORING_VERSION  # pinned (SC3)
     for bound in config.REFERENCE_BOUNDS.values():
         assert bound.ref_min < bound.ref_max
-
-
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda: resolve.clean_title("Redmi Note 13 8/256"),
-        lambda: resolve.resolve("Redmi Note 13 8/256", devices=None, aliases=None),
-    ],
-)
-def test_resolution_logic_is_stubbed_pending_tdd(call):
-    # M2: replace these stubs test-first from SPEC §7. Guards against accidental early impl.
-    with pytest.raises(NotImplementedError):
-        call()
