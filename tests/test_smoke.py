@@ -4,9 +4,10 @@
   * the SQLite schema creates,
   * FixtureSource returns a canned, in-band, source-agnostic listing set,
   * scoring config is internally consistent,
-  * M1/M2/M3 logic is stubbed (NotImplementedError) — TDD comes next, not now (invariant #2).
+  * M2/M3 logic is still stubbed (NotImplementedError) — TDD comes next, not now (invariant #2).
 
-No scoring/frontier is exercised here — that is M1, written test-first from SPEC §5.
+M1 scoring/frontier is now implemented and exercised in ``test_scoring.py`` / ``test_frontier.py``;
+this file stays scoped to the M0 skeleton DoD.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import pytest
 from ampere import config
 from ampere.adapters.repos import db
 from ampere.adapters.sources.fixture_source import FixtureSource
-from ampere.domain import frontier, scoring
+from ampere.domain import resolve
 from ampere.domain.models import RawListing
 from ampere.ports.search_source import SearchSource
 
@@ -66,11 +67,11 @@ def test_scoring_config_is_consistent():
 @pytest.mark.parametrize(
     "call",
     [
-        lambda: scoring.normalize(1.0, 0.0, 2.0),
-        lambda: frontier.pareto_frontier([]),
+        lambda: resolve.clean_title("Redmi Note 13 8/256"),
+        lambda: resolve.resolve("Redmi Note 13 8/256", devices=None, aliases=None),
     ],
 )
-def test_domain_logic_is_stubbed_pending_tdd(call):
-    # M1: replace these stubs test-first from SPEC §5. Guards against accidental early impl.
+def test_resolution_logic_is_stubbed_pending_tdd(call):
+    # M2: replace these stubs test-first from SPEC §7. Guards against accidental early impl.
     with pytest.raises(NotImplementedError):
         call()

@@ -4,11 +4,13 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M0 done — Clean-Architecture skeleton scaffolded, green (ruff + 6 smoke tests), schema
-creates, FixtureSource returns a canned in-band set, design system + app shell applied to
-`ampere/web/static/`. Domain logic is stubbed (`NotImplementedError`) awaiting TDD.
-**Next action:** M1 (scoring core — `normalize/performance/battery/capability/value` + Pareto
-frontier), written **test-first** from SPEC §5. Reference impl to port: `design/Ampere.dc.html`.
+**Phase:** M1 done — scoring core + Pareto frontier implemented **test-first** and green
+(ruff clean + 41 tests: 6 smoke, 22 scoring, 13 frontier). `domain/scoring.py` and
+`domain/frontier.py` are live, pure, deterministic, zero I/O. `domain/resolve.py` +
+`application/` remain stubbed (`NotImplementedError`) awaiting M2/M3 TDD.
+**Next action:** M2 (entity resolution — `clean_title` + `resolve` in `domain/resolve.py`),
+test-first from SPEC §7, leaning on the `id-android-market` skill for the ID-market ruleset.
+Target ≥85% auto-resolve on a ~50-title fixture; misses → needs-mapping queue.
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12). `uv pip install -e ".[dev,web]"`.
 
 ## Milestone tracker
@@ -16,7 +18,7 @@ frontier), written **test-first** from SPEC §5. Reference impl to port: `design
 | ID | Milestone                         | Status  | Notes |
 |----|-----------------------------------|---------|-------|
 | M0 | Skeleton + framework docs         | ✅ done  | repo, schema, FixtureSource, stubs, design shell — green |
-| M1 | Scoring core (pure)               | ☐ todo  | do first; zero network; deterministic |
+| M1 | Scoring core (pure)               | ✅ done  | normalize/perf/batt/cap/value + Pareto frontier; TDD, deterministic, ruff-clean |
 | M2 | Entity resolution                 | ☐ todo  | ≥85% auto-resolve target; alias table |
 | M3 | Persistence + daily use-case      | ☐ todo  | snapshot diffing; new arrivals/price drops |
 | M4 | Web UI (5 menu screens)           | ☐ todo  | Pareto scatter; weight sliders live re-score |
@@ -25,6 +27,25 @@ frontier), written **test-first** from SPEC §5. Reference impl to port: `design
 
 ## Decisions log
 
+- **M1 scoring core done (2026-07-13):**
+  - Ported the scoring/frontier math from `design/Ampere.dc.html` **test-first** (not pasted):
+    `domain/scoring.py` (`normalize`, `performance`, `battery`, `capability`, `value`) +
+    `domain/frontier.py` (`pareto_frontier`). All pure, deterministic, zero I/O; bounds/weights
+    read from `ampere.config` (no magic numbers → SC3/R4).
+  - **`performance()` implements §5.4 re-weighting** the prototype skips: missing metrics drop out
+    and the present metrics' weights renormalize to sum 1 (never fabricate — invariant #4). Zero
+    metrics → `ValueError` (caller marks `unmatched`). `throttle_modifier` scales each normed
+    value before the blend (§5.5).
+  - **`battery()` is active_use_v2-only for now.** Legacy endurance has **no configured reference
+    bound**; rather than invent one (invariant #4, "never mix silently" §5.1) it raises. Deferred
+    to a deliberate bound later (see open question below).
+  - **`value()` guards `effective_price <= 0`** (raises) instead of emitting inf/negative.
+  - **Frontier tie semantics:** domination requires strictly-better on ≥1 axis, so identical
+    (price, capability) points both stay on the frontier. Per-condition by default; `blended=True`
+    unions all conditions (tested: a cheaper+better *used* phone does NOT drop a *new* one unless
+    blended). Self-exclusion is by object identity (`o is not r`), robust to duplicate coords.
+  - Repointed the M0 smoke stub-guard from scoring/frontier → `resolve.*` (the still-stubbed M2
+    surface). Tests split into `test_scoring.py` / `test_frontier.py`. Not committed (awaiting user).
 - **M0 scaffold + design applied (2026-07-12):**
   - Clean-Architecture package `ampere/` created (`domain`/`application`/`ports`/`adapters`/`web`)
     + `tests/`, `pyproject.toml` (ruff + pytest, hatchling), `.gitignore`, `README.md`. `git init`
@@ -107,6 +128,10 @@ frontier), written **test-first** from SPEC §5. Reference impl to port: `design
 
 - [ ] **#3 residual:** chipset-sharing pushes most listings to `full`; is a per-metric imputation
       fallback wanted for the rare SoC with zero Wild Life data, or just mark `partial`? (default: mark partial)
+- [ ] **Legacy battery bound (from M1):** `battery()` currently supports only Active-Use-v2;
+      legacy-endurance-only devices raise (no configured bound, don't fabricate). Do we need a
+      legacy `REFERENCE_BOUNDS` window (bumps `scoring_version`), or are all in-band devices v2 so
+      legacy can stay unsupported? (default: stay v2-only until a real legacy device appears)
 - [x] ~~Shopee Mall/condition detection~~ — **resolved from HAR** (Appendix A).
 - [x] ~~Scheduler: cron vs APScheduler~~ — **decided:** OS scheduler (launchd/cron) + catch-up, automatic daily.
 - [ ] `InternalEndpointSource`: Playwright-driven browser session (robust, recommended) vs
