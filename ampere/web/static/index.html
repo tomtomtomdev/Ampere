@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ampere — caliper for phones</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!--
+    Ampere app shell — the design system + chrome from design/README.md, applied.
+    This is the M4 STARTING POINT: layout, tokens, and navigation only. The five screens
+    (Dashboard / Listings / Catalog / Watchlist / Settings) are rendered from the API in M4 —
+    scoring/dedup/frontier stay in the Python domain layer (never re-implemented in JS).
+    Full interactive reference: design/Ampere.dc.html.
+  -->
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-row">
+          <span class="brand-dot"></span>
+          <span class="brand-name">AMPERE</span>
+        </div>
+        <div class="brand-sub">caliper for phones · Shopee ID</div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-screen="dashboard">
+          <span class="bar"></span><span class="label">Dashboard</span><span class="badge"></span>
+        </button>
+        <button class="nav-item" data-screen="listings">
+          <span class="bar"></span><span class="label">Listings</span><span class="badge">—</span>
+        </button>
+        <button class="nav-item" data-screen="catalog">
+          <span class="bar"></span><span class="label">Catalog</span><span class="badge">—</span>
+        </button>
+        <button class="nav-item" data-screen="changes">
+          <span class="bar"></span><span class="label">Watchlist</span><span class="badge">—</span>
+        </button>
+        <button class="nav-item" data-screen="settings">
+          <span class="bar"></span><span class="label">Settings</span><span class="badge"></span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        snapshot —<br />
+        scoring v2.1.0<br />
+        frontier per-condition
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="chips">
+          <span class="chip">keyword: <span class="accent">android</span></span>
+          <span class="chip">band: 1.00jt–2.00jt</span>
+          <span class="chip">Shopee.co.id</span>
+        </div>
+        <div class="stats">
+          <span>raw —</span>
+          <span>deduped —</span>
+          <span class="accent">matched —%</span>
+          <span>last run 06:00 WIB</span>
+          <!-- No manual run button — the daily job is unattended (SPEC §4/§8a). -->
+          <span class="schedule-pill"><span class="schedule-dot"></span>AUTO · next run —</span>
+        </div>
+      </header>
+
+      <main class="content" id="content">
+        <h1 id="screen-title">Pareto frontier — capability vs effective price</h1>
+        <div class="scaffold-note">
+          <strong>Scaffold shell (M0).</strong> The design system + navigation are in place. The five
+          screens are wired to the FastAPI backend in <code>M4</code>; scoring, dedup, and the Pareto
+          frontier live in the Python <code>domain</code> layer (M1) and are never re-implemented here.
+          <br /><br />
+          Full interactive design reference: <code>design/Ampere.dc.html</code>.
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+[project]
+name = "ampere"
+version = "0.1.0"
+description = "Caliper for Android phones — Shopee ID value scanner (Capability vs Value, Pareto frontier)."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2",
+    "httpx>=0.27",
+    "rapidfuzz>=3",
+    # aiosqlite is used by the SQLite adapters; stdlib sqlite3 is the fallback.
+    "aiosqlite>=0.20",
+]
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+# Headless daily entrypoint invoked by the OS scheduler (launchd/cron) — SPEC §8a, SC8.
+ampere-run-daily = "ampere.application.run_daily:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ampere"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["ampere", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"

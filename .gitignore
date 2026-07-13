@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data / runtime (DB is reproducible from sources + docs — see SC5/SC6)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/cache/
+
+# Playwright persisted profile (InternalEndpointSource, SPEC Appendix A)
+.shopee_profile/
+
+# OS
+.DS_Store

@@ -1,0 +1,127 @@
+/* Ampere design system — "instrument / caliper readout".
+ * Tokens ported verbatim from the design handoff (design/README.md "Design Tokens").
+ * Dark, dense, terminal-like. Monospace throughout. One signal color (electric lime) = "good".
+ * border-radius: 0 everywhere; no gradients/shadows except the hover tooltip.
+ * The design reference lives in design/Ampere.dc.html — recreate against this, do not ship support.js.
+ */
+
+:root {
+  /* Color */
+  --bg: #0a0b0a;
+  --panel: #0d0f0d;
+  --panel-raised: #101310;
+  --panel-raised-2: #131711;
+  --border: #1c211a;
+  --border-2: #262b22;
+  --border-accent: #2a3024;
+  --border-accent-2: #3a4a1e;
+  --divider-faint: #14181110;
+
+  --text: #dfe4d8;
+  --text-bright: #f2f5ec;
+  --text-dim: #8a9081;
+  --text-muted: #6b7164;
+  --text-faint: #565b50;
+
+  --accent: #c6ff3a;        /* frontier, positive delta, active, primary numbers */
+  --accent-hover: #dfff8a;
+  --warn: #f2b545;          /* partial confidence, STAR+, LEGACY battery, needs-mapping */
+  --warn-border: #4a3f1e;
+  --danger: #ff6b6b;        /* "dominated" verdict */
+  --dominated-fill: #20261c;
+  --dominated-stroke: #3a4033;
+  --dominated-stroke-used: #8a9081;
+
+  /* Type */
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --fs-body: 13px;
+
+  /* Geometry */
+  --sidebar-w: 236px;
+  --topbar-h: 52px;
+  --tooltip-shadow: 0 8px 24px #000a;
+}
+
+* { box-sizing: border-box; border-radius: 0; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes blink { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0.25; } }
+
+/* App shell ------------------------------------------------------------------------------------ */
+.app { display: flex; min-height: 100%; }
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex: 0 0 var(--sidebar-w);
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.brand { padding: 22px 20px 18px; border-bottom: 1px solid var(--border); }
+.brand-row { display: flex; align-items: center; gap: 10px; }
+.brand-dot {
+  width: 11px; height: 11px; background: var(--accent);
+  box-shadow: 0 0 10px var(--accent); animation: blink 2.4s infinite;
+}
+.brand-name { font-size: 17px; font-weight: 600; letter-spacing: 2px; color: var(--text-bright); }
+.brand-sub { margin-top: 6px; font-size: 10.5px; color: var(--text-muted); }
+
+.nav { padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; background: transparent; border: none;
+  color: var(--text-dim); font-family: inherit; font-size: 12.5px;
+  padding: 9px 12px 9px 4px; cursor: pointer; text-align: left; letter-spacing: 0.3px;
+}
+.nav-item .bar { width: 5px; height: 16px; background: transparent; margin-right: 8px; }
+.nav-item .label { flex: 1; }
+.nav-item .badge { font-size: 10px; color: var(--text-faint); min-width: 18px; text-align: right; }
+.nav-item.active { background: var(--panel-raised-2); color: var(--text-bright); }
+.nav-item.active .bar { background: var(--accent); }
+.nav-item.active .badge { color: var(--accent); }
+
+.sidebar-footer {
+  border-top: 1px solid var(--border); padding: 12px 16px;
+  font-size: 10px; color: var(--text-faint); line-height: 1.7;
+}
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  height: var(--topbar-h); flex: 0 0 var(--topbar-h);
+  background: var(--panel); border-bottom: 1px solid var(--border-2);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 26px; gap: 16px;
+}
+.topbar .chips, .topbar .stats { display: flex; align-items: center; gap: 14px; font-size: 11.5px; }
+.topbar .chip { border: 1px solid var(--border-2); padding: 3px 9px; color: var(--text-dim); }
+.topbar .accent { color: var(--accent); }
+.schedule-pill {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border-2); padding: 4px 10px; font-size: 11px; color: var(--text-dim);
+}
+.schedule-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: blink 2.4s infinite; }
+
+.content { padding: 24px 26px 60px; overflow: auto; }
+.content h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; color: var(--text-bright); margin: 0 0 16px; }
+.section-label { font-size: 11px; letter-spacing: 0.8px; color: var(--text-dim); text-transform: uppercase; }
+
+.panel { background: var(--panel); border: 1px solid var(--border); }
+
+/* status placeholder shown until M4 wires the real screens to the API */
+.scaffold-note {
+  margin-top: 20px; padding: 16px; border: 1px dashed var(--border-2);
+  color: var(--text-muted); font-size: 12px; line-height: 1.6;
+}
+.scaffold-note code { color: var(--accent); }

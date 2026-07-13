@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: #0a0b0a; font-family: 'IBM Plex Mono', ui-monospace, monospace; -webkit-font-smoothing: antialiased; }
+  a { color: #c6ff3a; text-decoration: none; }
+  a:hover { color: #dfff8a; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #262b22; border-radius: 0; }
+  ::-webkit-scrollbar-track { background: #0a0b0a; }
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 3px; background: #262b22; outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #c6ff3a; cursor: pointer; border-radius: 0; }
+  @keyframes blink { 0%,60%{opacity:1} 61%,100%{opacity:0.25} }
+</style>
+</helmet>
+<div style="display:flex; height:100vh; width:100%; color:#dfe4d8; font-size:13px; overflow:hidden;">
+
+  <!-- SIDEBAR -->
+  <aside style="width:236px; flex:none; background:#0d0f0d; border-right:1px solid #1c211a; display:flex; flex-direction:column;">
+    <div style="padding:22px 20px 18px; border-bottom:1px solid #1c211a;">
+      <div style="display:flex; align-items:center; gap:9px;">
+        <div style="width:11px; height:11px; background:#c6ff3a; box-shadow:0 0 10px #c6ff3a; animation:blink 2.4s infinite;"></div>
+        <span style="font-size:17px; font-weight:600; letter-spacing:2px; color:#f2f5ec;">AMPERE</span>
+      </div>
+      <div style="margin-top:7px; font-size:10.5px; color:#6b7164; letter-spacing:0.3px;">caliper for phones · Shopee ID</div>
+    </div>
+    <nav style="padding:12px 10px; display:flex; flex-direction:column; gap:2px; flex:1;">
+      <sc-for list="{{ nav }}" as="item" hint-placeholder-count="5">
+        <button onClick="{{ item.onClick }}" style="{{ item.style }}">
+          <span style="display:flex; align-items:center; gap:10px;">
+            <span style="width:5px; height:16px; background:{{ item.bar }};"></span>
+            <span>{{ item.label }}</span>
+          </span>
+          <span style="{{ item.badgeStyle }}">{{ item.badge }}</span>
+        </button>
+      </sc-for>
+    </nav>
+    <div style="padding:14px 20px; border-top:1px solid #1c211a; font-size:10px; color:#565b50; line-height:1.7;">
+      <div>snapshot &nbsp;<span style="color:#8a9081;">2026-07-12</span></div>
+      <div>scoring &nbsp;&nbsp;<span style="color:#8a9081;">v2.1.0</span></div>
+      <div>frontier &nbsp;<span style="color:#8a9081;">per-condition</span></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main style="flex:1; display:flex; flex-direction:column; min-width:0; background:#0a0b0a;">
+    <!-- TOP BAR -->
+    <header style="flex:none; height:52px; border-bottom:1px solid #1c211a; display:flex; align-items:center; justify-content:space-between; padding:0 22px; background:#0d0f0d;">
+      <div style="display:flex; align-items:center; gap:10px; font-size:11.5px;">
+        <span style="color:#565b50;">query</span>
+        <span style="padding:3px 9px; background:#14181110; border:1px solid #2a3024; color:#dfe4d8;">keyword: <span style="color:#c6ff3a;">{{ keyword }}</span></span>
+        <span style="padding:3px 9px; border:1px solid #2a3024; color:#8a9081;">band: {{ bandLabel }}</span>
+        <span style="padding:3px 9px; border:1px solid #2a3024; color:#8a9081;">Shopee.co.id</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:18px; font-size:11px; color:#6b7164;">
+        <span>raw <span style="color:#dfe4d8;">{{ stat.raw }}</span></span>
+        <span>deduped <span style="color:#dfe4d8;">{{ stat.deduped }}</span></span>
+        <span>matched <span style="color:#c6ff3a;">{{ stat.matchPct }}%</span></span>
+        <span style="color:#565b50;">last run {{ lastRun }}</span>
+        <div title="Scheduled daily — no manual trigger" style="display:flex; align-items:center; gap:8px; padding:6px 12px; border:1px solid #2a3024; background:#101310; font-size:11px;">
+          <span style="width:6px; height:6px; background:#c6ff3a; border-radius:50%; box-shadow:0 0 6px #c6ff3a; animation:blink 2.4s infinite;"></span>
+          <span style="color:#c6ff3a; letter-spacing:0.5px;">AUTO</span>
+          <span style="color:#565b50;">·</span>
+          <span style="color:#8a9081;">next run in {{ nextRun }}</span>
+        </div>
+      </div>
+    </header>
+
+    <div style="flex:1; overflow:auto; padding:24px 26px 60px;">
+
+      <!-- ===================== DASHBOARD ===================== -->
+      <sc-if value="{{ isDash }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px;">
+            <h1 style="margin:0; font-size:15px; font-weight:600; letter-spacing:0.5px; color:#f2f5ec;">Pareto frontier <span style="color:#565b50; font-weight:400;">— capability vs effective price</span></h1>
+            <div style="display:flex; gap:16px; font-size:11px; color:#8a9081;">
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="checkbox" checked="{{ frontierOnly }}" onChange="{{ onFrontierOnly }}" style="accent-color:#c6ff3a;"> frontier only</label>
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="checkbox" checked="{{ blended }}" onChange="{{ onBlended }}" style="accent-color:#c6ff3a;"> blend conditions</label>
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="checkbox" checked="{{ mallOnly }}" onChange="{{ onMallOnly }}" style="accent-color:#c6ff3a;"> Mall only</label>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:20px; align-items:flex-start;">
+            <!-- CHART -->
+            <div style="flex:none; width:772px; background:#0d0f0d; border:1px solid #1c211a; padding:14px 6px 6px 6px; position:relative;">
+              <svg width="760" height="430" viewBox="0 0 760 430" style="display:block; overflow:visible;">
+                <sc-for list="{{ yTicks }}" as="t" hint-placeholder-count="6">
+                  <line x1="56" y1="{{ t.y }}" x2="736" y2="{{ t.y }}" stroke="#1a1f17" stroke-width="1"></line>
+                  <text x="48" y="{{ t.ty }}" text-anchor="end" fill="#565b50" font-size="10" font-family="IBM Plex Mono">{{ t.label }}</text>
+                </sc-for>
+                <sc-for list="{{ xTicks }}" as="t" hint-placeholder-count="5">
+                  <line x1="{{ t.x }}" y1="20" x2="{{ t.x }}" y2="386" stroke="#141912" stroke-width="1"></line>
+                  <text x="{{ t.x }}" y="402" text-anchor="middle" fill="#565b50" font-size="10" font-family="IBM Plex Mono">{{ t.label }}</text>
+                </sc-for>
+                <text x="396" y="424" text-anchor="middle" fill="#6b7164" font-size="10" letter-spacing="1.5" font-family="IBM Plex Mono">EFFECTIVE PRICE (IDR)</text>
+                <text x="16" y="203" text-anchor="middle" fill="#6b7164" font-size="10" letter-spacing="1.5" font-family="IBM Plex Mono" transform="rotate(-90 16 203)">CAPABILITY</text>
+                <sc-for list="{{ frontierLines }}" as="fl" hint-placeholder-count="1">
+                  <polyline points="{{ fl.pts }}" fill="none" stroke="#c6ff3a" stroke-width="1.5" stroke-dasharray="{{ fl.dash }}" opacity="{{ fl.op }}"></polyline>
+                </sc-for>
+                <sc-for list="{{ points }}" as="p" hint-placeholder-count="10">
+                  <circle cx="{{ p.cx }}" cy="{{ p.cy }}" r="{{ p.r }}" fill="{{ p.fill }}" stroke="{{ p.stroke }}" stroke-width="{{ p.sw }}" stroke-dasharray="{{ p.dash }}" opacity="{{ p.op }}" style="cursor:pointer; transition:opacity .12s;" onMouseEnter="{{ p.onEnter }}" onMouseLeave="{{ onLeave }}"></circle>
+                </sc-for>
+              </svg>
+              <!-- legend -->
+              <div style="display:flex; gap:18px; padding:8px 12px 4px 56px; font-size:10px; color:#8a9081;">
+                <span style="display:flex; align-items:center; gap:6px;"><span style="width:9px; height:9px; background:#c6ff3a; border-radius:50%; box-shadow:0 0 6px #c6ff3a80;"></span>frontier</span>
+                <span style="display:flex; align-items:center; gap:6px;"><span style="width:9px; height:9px; border:1px solid #55605140; background:#20261c; border-radius:50%;"></span>dominated</span>
+                <span style="display:flex; align-items:center; gap:6px;"><span style="width:9px; height:9px; border:1px dashed #8a9081; border-radius:50%;"></span>used / second</span>
+              </div>
+              <!-- tooltip -->
+              <sc-if value="{{ hasHover }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute; pointer-events:none; z-index:5; left:{{ hover.tx }}px; top:{{ hover.ty }}px; transform:translate(-50%,-108%); background:#14181f; border:1px solid #2f3a24; padding:9px 11px; min-width:172px; box-shadow:0 8px 24px #000a;">
+                  <div style="font-size:12px; font-weight:600; color:#f2f5ec;">{{ hover.model }}</div>
+                  <div style="font-size:10.5px; color:#8a9081; margin-bottom:6px;">{{ hover.sub }}</div>
+                  <div style="display:flex; justify-content:space-between; font-size:10.5px; margin:2px 0;"><span style="color:#6b7164;">capability</span><span style="color:#c6ff3a;">{{ hover.capStr }}</span></div>
+                  <div style="display:flex; justify-content:space-between; font-size:10.5px; margin:2px 0;"><span style="color:#6b7164;">eff. price</span><span>{{ hover.effStr }}</span></div>
+                  <div style="display:flex; justify-content:space-between; font-size:10.5px; margin:2px 0;"><span style="color:#6b7164;">value</span><span>{{ hover.valStr }}</span></div>
+                  <div style="display:flex; justify-content:space-between; font-size:10.5px; margin:2px 0;"><span style="color:#6b7164;">verdict</span><span style="color:{{ hover.vcolor }};">{{ hover.verdict }}</span></div>
+                </div>
+              </sc-if>
+            </div>
+
+            <!-- FRONTIER TABLE + WEIGHTS -->
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:16px;">
+              <div style="background:#0d0f0d; border:1px solid #1c211a;">
+                <div style="padding:10px 14px; border-bottom:1px solid #1c211a; font-size:11px; letter-spacing:0.8px; color:#8a9081; display:flex; justify-content:space-between;"><span>TOP OF FRONTIER — VALUE RANKED</span><span style="color:#c6ff3a;">cap / juta</span></div>
+                <sc-for list="{{ topFrontier }}" as="r" hint-placeholder-count="6">
+                  <div style="display:flex; align-items:center; gap:10px; padding:9px 14px; border-bottom:1px solid #14181110;">
+                    <span style="width:18px; color:#565b50; font-size:11px;">{{ r.rank }}</span>
+                    <div style="flex:1; min-width:0;">
+                      <div style="font-size:12px; color:#f2f5ec; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.model }} <span style="color:#6b7164;">{{ r.variant }}</span></div>
+                      <div style="font-size:10px; color:#6b7164;">{{ r.chip }} · {{ r.effStr }}</div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:13px; font-weight:600; color:#c6ff3a;">{{ r.valStr }}</div>
+                      <div style="font-size:9.5px; color:#565b50;">cap {{ r.capStr }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="background:#0d0f0d; border:1px solid #1c211a; padding:14px;">
+                <div style="font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:12px;">CAPABILITY WEIGHTING</div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px;"><span style="color:#6b7164;">performance</span><span style="color:#c6ff3a;">{{ wPerfStr }}</span></div>
+                <input type="range" min="0" max="1" step="0.05" value="{{ wPerf }}" onChange="{{ onWPerf }}" style="width:100%; margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; font-size:11px;"><span style="color:#6b7164;">battery endurance</span><span style="color:#dfe4d8;">{{ wBattStr }}</span></div>
+                <div style="margin-top:12px; font-size:10px; color:#565b50; line-height:1.6;">perf blend = GB6·2 / AnTuTu / Wild&nbsp;Life Extreme, evenly weighted. Battery is a co-equal pillar, not a tiebreaker.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ===================== LISTINGS ===================== -->
+      <sc-if value="{{ isListings }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <h1 style="margin:0 0 14px; font-size:15px; font-weight:600; letter-spacing:0.5px; color:#f2f5ec;">Listings <span style="color:#565b50; font-weight:400;">— {{ listingRows.length }} deduped SKUs</span></h1>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; font-size:11px;">
+            <sc-for list="{{ brandChips }}" as="b" hint-placeholder-count="6">
+              <button onClick="{{ b.onClick }}" style="{{ b.style }}">{{ b.label }}</button>
+            </sc-for>
+            <span style="width:1px; background:#262b22; margin:0 4px;"></span>
+            <sc-for list="{{ condChips }}" as="c" hint-placeholder-count="3">
+              <button onClick="{{ c.onClick }}" style="{{ c.style }}">{{ c.label }}</button>
+            </sc-for>
+            <span style="width:1px; background:#262b22; margin:0 4px;"></span>
+            <sc-for list="{{ confChips }}" as="c" hint-placeholder-count="3">
+              <button onClick="{{ c.onClick }}" style="{{ c.style }}">{{ c.label }}</button>
+            </sc-for>
+          </div>
+          <div style="background:#0d0f0d; border:1px solid #1c211a; overflow:hidden;">
+            <div style="display:grid; grid-template-columns:2.4fr 0.8fr 1.3fr 0.9fr 0.8fr 0.85fr 1.1fr 0.5fr; align-items:center; padding:0 14px; height:38px; border-bottom:1px solid #262b22; background:#101310;">
+              <sc-for list="{{ cols }}" as="c" hint-placeholder-count="8">
+                <button onClick="{{ c.onSort }}" style="{{ c.style }}">{{ c.label }}<span style="color:#c6ff3a;">{{ c.arrow }}</span></button>
+              </sc-for>
+            </div>
+            <sc-for list="{{ listingRows }}" as="r" hint-placeholder-count="12">
+              <div style="display:grid; grid-template-columns:2.4fr 0.8fr 1.3fr 0.9fr 0.8fr 0.85fr 1.1fr 0.5fr; align-items:center; padding:10px 14px; border-bottom:1px solid #14181110; font-size:12px;" style-hover="background:#101310;">
+                <div style="min-width:0; padding-right:10px;">
+                  <div style="display:flex; align-items:center; gap:7px;">
+                    <span style="color:#f2f5ec; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.model }} <span style="color:#6b7164;">{{ r.variant }}</span></span>
+                    <sc-if value="{{ r.frontier }}" hint-placeholder-val="{{ false }}"><span style="flex:none; font-size:8.5px; color:#c6ff3a; border:1px solid #3a4a1e; padding:1px 4px; letter-spacing:0.5px;">FRONTIER</span></sc-if>
+                    <sc-if value="{{ r.dup }}" hint-placeholder-val="{{ false }}"><span style="flex:none; font-size:9px; color:#6b7164;">×{{ r.dupCount }}</span></sc-if>
+                  </div>
+                  <div style="font-size:10px; color:#565b50; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.title }}</div>
+                </div>
+                <div style="color:#8a9081;">{{ r.chip }}</div>
+                <div><span style="color:#dfe4d8;">{{ r.effStr }}</span><sc-if value="{{ r.hasDrop }}" hint-placeholder-val="{{ false }}"><div style="font-size:9.5px; color:#c6ff3a;">▼ {{ r.dropStr }}</div></sc-if></div>
+                <div style="color:#c6ff3a; font-weight:500;">{{ r.capStr }}</div>
+                <div style="color:#dfe4d8;">{{ r.valStr }}</div>
+                <div><span style="{{ r.confStyle }}">{{ r.confidence }}</span></div>
+                <div style="min-width:0;">
+                  <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="color:#dfe4d8;">★{{ r.rating }}</span>
+                    <sc-if value="{{ r.isMall }}" hint-placeholder-val="{{ false }}"><span style="font-size:8.5px; color:#c6ff3a; border:1px solid #3a4a1e; padding:1px 3px;">MALL</span></sc-if>
+                    <sc-if value="{{ r.star }}" hint-placeholder-val="{{ false }}"><span style="font-size:8.5px; color:#f2b545;">STAR+</span></sc-if>
+                  </div>
+                  <div style="font-size:9.5px; color:#565b50;">{{ r.loc }}</div>
+                </div>
+                <div style="text-align:right;"><a href="#" style="font-size:11px;">open →</a></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ===================== CATALOG ===================== -->
+      <sc-if value="{{ isCatalog }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <h1 style="margin:0 0 14px; font-size:15px; font-weight:600; letter-spacing:0.5px; color:#f2f5ec;">Catalog <span style="color:#565b50; font-weight:400;">— reference DB</span></h1>
+          <div style="display:flex; gap:20px; align-items:flex-start;">
+            <div style="flex:1.4; min-width:0;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:8px;">CHIPSET BENCHMARKS <span style="color:#565b50;">· one row per SoC · refreshed 2026-06 · GSMArena</span></div>
+              <div style="background:#0d0f0d; border:1px solid #1c211a;">
+                <div style="display:grid; grid-template-columns:1.6fr 0.9fr 0.9fr 1fr 0.9fr 0.6fr; padding:0 14px; height:36px; align-items:center; border-bottom:1px solid #262b22; background:#101310; font-size:10px; letter-spacing:0.5px; color:#6b7164;">
+                  <span>CHIPSET</span><span style="text-align:right;">GB6 S</span><span style="text-align:right;">GB6 M</span><span style="text-align:right;">AnTuTu v10</span><span style="text-align:right;">WLE Hi</span><span style="text-align:right;">used by</span>
+                </div>
+                <sc-for list="{{ chipRows }}" as="c" hint-placeholder-count="10">
+                  <div style="display:grid; grid-template-columns:1.6fr 0.9fr 0.9fr 1fr 0.9fr 0.6fr; padding:9px 14px; align-items:center; border-bottom:1px solid #14181110; font-size:12px;" style-hover="background:#101310;">
+                    <span style="color:#f2f5ec;">{{ c.name }}</span>
+                    <span style="text-align:right; color:#dfe4d8;">{{ c.gb6s }}</span>
+                    <span style="text-align:right; color:#dfe4d8;">{{ c.gb6m }}</span>
+                    <span style="text-align:right; color:#dfe4d8;">{{ c.antutu }}</span>
+                    <span style="text-align:right; color:#dfe4d8;">{{ c.wle }}</span>
+                    <span style="text-align:right; color:#c6ff3a;">{{ c.devices }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top:20px; font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:8px;">DEVICE ROWS <span style="color:#565b50;">· battery + update longevity are per-device</span></div>
+              <div style="background:#0d0f0d; border:1px solid #1c211a;">
+                <div style="display:grid; grid-template-columns:1.6fr 1.3fr 0.9fr 0.9fr 0.9fr; padding:0 14px; height:36px; align-items:center; border-bottom:1px solid #262b22; background:#101310; font-size:10px; letter-spacing:0.5px; color:#6b7164;">
+                  <span>DEVICE</span><span>CHIPSET</span><span style="text-align:right;">ACTIVE USE</span><span style="text-align:right;">OS / SEC yr</span><span style="text-align:right;">SOURCE</span>
+                </div>
+                <sc-for list="{{ deviceRows }}" as="d" hint-placeholder-count="10">
+                  <div style="display:grid; grid-template-columns:1.6fr 1.3fr 0.9fr 0.9fr 0.9fr; padding:9px 14px; align-items:center; border-bottom:1px solid #14181110; font-size:12px;" style-hover="background:#101310;">
+                    <span style="color:#f2f5ec;">{{ d.model }} <span style="color:#6b7164;">{{ d.variant }}</span></span>
+                    <span style="color:#8a9081;">{{ d.chip }}</span>
+                    <span style="text-align:right;"><span style="color:#dfe4d8;">{{ d.hours }}</span> <span style="{{ d.battStyle }}">{{ d.battTag }}</span></span>
+                    <span style="text-align:right; color:#dfe4d8;">{{ d.os }}</span>
+                    <span style="text-align:right; color:#565b50; font-size:10px;">{{ d.src }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#f2b545; margin-bottom:8px;">NEEDS MAPPING QUEUE <span style="color:#565b50;">· {{ needsMapping.length }} unresolved</span></div>
+              <div style="background:#0d0f0d; border:1px solid #2a2513;">
+                <sc-for list="{{ needsMapping }}" as="n" hint-placeholder-count="3">
+                  <div style="padding:11px 14px; border-bottom:1px solid #14181110;">
+                    <div style="font-size:11.5px; color:#dfe4d8; line-height:1.5;">{{ n.title }}</div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                      <input placeholder="assign model…" style="flex:1; background:#0a0b0a; border:1px solid #262b22; color:#dfe4d8; font-family:inherit; font-size:11px; padding:5px 8px;">
+                      <button style="background:#c6ff3a; color:#0a0b0a; border:none; font-family:inherit; font-size:10.5px; font-weight:600; padding:5px 10px; cursor:pointer;">map</button>
+                    </div>
+                  </div>
+                </sc-for>
+                <div style="padding:11px 14px; font-size:10px; color:#565b50; line-height:1.6;">Mapped aliases are remembered in the <span style="color:#8a9081;">id-android-market</span> ruleset — the gap is closed once.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ===================== CHANGES ===================== -->
+      <sc-if value="{{ isChanges }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <h1 style="margin:0 0 14px; font-size:15px; font-weight:600; letter-spacing:0.5px; color:#f2f5ec;">Watchlist <span style="color:#565b50; font-weight:400;">— vs snapshot 2026-07-11</span></h1>
+          <div style="display:flex; gap:20px; align-items:flex-start;">
+            <div style="flex:1;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#c6ff3a; margin-bottom:8px;">PRICE DROPS <span style="color:#565b50;">· {{ priceDrops.length }} today</span></div>
+              <div style="background:#0d0f0d; border:1px solid #1c211a;">
+                <sc-for list="{{ priceDrops }}" as="r" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; gap:12px; padding:11px 14px; border-bottom:1px solid #14181110;">
+                    <div style="flex:1; min-width:0;">
+                      <div style="font-size:12px; color:#f2f5ec;">{{ r.model }} <span style="color:#6b7164;">{{ r.variant }}</span></div>
+                      <div style="font-size:10px; color:#565b50;">{{ r.chip }} · cap {{ r.capStr }}</div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:12px; color:#dfe4d8;">{{ r.effStr }}</div>
+                      <div style="font-size:10px; color:#565b50; text-decoration:line-through;">{{ r.prevStr }}</div>
+                    </div>
+                    <div style="width:74px; text-align:right; color:#c6ff3a; font-size:12px; font-weight:600;">▼ {{ r.dropStr }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:8px;">NEW ARRIVALS <span style="color:#565b50;">· {{ newArrivals.length }} today</span></div>
+              <div style="background:#0d0f0d; border:1px solid #1c211a;">
+                <sc-for list="{{ newArrivals }}" as="r" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; gap:12px; padding:11px 14px; border-bottom:1px solid #14181110;">
+                    <span style="width:6px; height:6px; background:#c6ff3a; border-radius:50%; flex:none;"></span>
+                    <div style="flex:1; min-width:0;">
+                      <div style="font-size:12px; color:#f2f5ec;">{{ r.model }} <span style="color:#6b7164;">{{ r.variant }}</span></div>
+                      <div style="font-size:10px; color:#565b50;">{{ r.chip }} · {{ r.effStr }}</div>
+                    </div>
+                    <sc-if value="{{ r.frontier }}" hint-placeholder-val="{{ false }}"><span style="font-size:8.5px; color:#c6ff3a; border:1px solid #3a4a1e; padding:1px 5px;">ON FRONTIER</span></sc-if>
+                    <div style="width:52px; text-align:right; color:#c6ff3a; font-size:13px; font-weight:600;">{{ r.valStr }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ===================== SETTINGS ===================== -->
+      <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:720px;">
+          <h1 style="margin:0 0 18px; font-size:15px; font-weight:600; letter-spacing:0.5px; color:#f2f5ec;">Settings</h1>
+          <div style="display:flex; flex-direction:column; gap:1px; background:#1c211a; border:1px solid #1c211a;">
+            <div style="background:#0d0f0d; padding:16px 18px;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:14px;">QUERY</div>
+              <div style="display:flex; gap:14px; flex-wrap:wrap;">
+                <label style="display:flex; flex-direction:column; gap:6px; font-size:11px; color:#6b7164;">keyword
+                  <input value="{{ keyword }}" onChange="{{ onKeyword }}" style="background:#0a0b0a; border:1px solid #262b22; color:#c6ff3a; font-family:inherit; font-size:12px; padding:7px 10px; width:180px;"></label>
+                <label style="display:flex; flex-direction:column; gap:6px; font-size:11px; color:#6b7164;">price min (IDR)
+                  <input value="{{ bandMin }}" onChange="{{ onBandMin }}" style="background:#0a0b0a; border:1px solid #262b22; color:#dfe4d8; font-family:inherit; font-size:12px; padding:7px 10px; width:130px;"></label>
+                <label style="display:flex; flex-direction:column; gap:6px; font-size:11px; color:#6b7164;">price max (IDR)
+                  <input value="{{ bandMax }}" onChange="{{ onBandMax }}" style="background:#0a0b0a; border:1px solid #262b22; color:#dfe4d8; font-family:inherit; font-size:12px; padding:7px 10px; width:130px;"></label>
+              </div>
+            </div>
+            <div style="background:#0d0f0d; padding:16px 18px;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:14px;">SCORING WEIGHTS <span style="color:#565b50;">· scoring_version v2.1.0</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px;"><span style="color:#6b7164;">W_PERF performance</span><span style="color:#c6ff3a;">{{ wPerfStr }}</span></div>
+              <input type="range" min="0" max="1" step="0.05" value="{{ wPerf }}" onChange="{{ onWPerf }}" style="width:100%; margin-bottom:14px;">
+              <div style="display:flex; gap:10px; flex-wrap:wrap; font-size:10px; color:#6b7164;">
+                <span style="border:1px solid #262b22; padding:4px 8px;">GB6 single ·25</span>
+                <span style="border:1px solid #262b22; padding:4px 8px;">GB6 multi ·25</span>
+                <span style="border:1px solid #262b22; padding:4px 8px;">AnTuTu v10 ·25</span>
+                <span style="border:1px solid #262b22; padding:4px 8px;">Wild Life Ext ·25</span>
+                <span style="border:1px solid #2a3024; padding:4px 8px; color:#8a9081;">W_BATT battery ·{{ wBattStr }}</span>
+              </div>
+            </div>
+            <div style="background:#0d0f0d; padding:16px 18px;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:14px;">FILTERS &amp; TOGGLES</div>
+              <div style="display:flex; flex-direction:column; gap:12px; font-size:12px; color:#dfe4d8;">
+                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;"><span>Mall only <span style="color:#565b50;">(SHOP_TYPE=OFFICIAL_MALL — practical "new" proxy)</span></span><input type="checkbox" checked="{{ mallOnly }}" onChange="{{ onMallOnly }}" style="accent-color:#c6ff3a;"></label>
+                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;"><span>Blend conditions in frontier <span style="color:#565b50;">(off = new vs new, used vs used)</span></span><input type="checkbox" checked="{{ blended }}" onChange="{{ onBlended }}" style="accent-color:#c6ff3a;"></label>
+                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;"><span>Longevity bonus <span style="color:#565b50;">(fold OS-update years into capability)</span></span><input type="checkbox" checked="{{ longevity }}" onChange="{{ onLongevity }}" style="accent-color:#c6ff3a;"></label>
+                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;"><span>Trust penalty on value <span style="color:#565b50;">(soft-penalize low-trust listings)</span></span><input type="checkbox" checked="{{ trustPenalty }}" onChange="{{ onTrustPenalty }}" style="accent-color:#c6ff3a;"></label>
+              </div>
+            </div>
+            <div style="background:#0d0f0d; padding:16px 18px;">
+              <div style="font-size:11px; letter-spacing:0.8px; color:#8a9081; margin-bottom:14px;">SOURCE</div>
+              <div style="display:flex; gap:8px; margin-bottom:14px;">
+                <sc-for list="{{ sourceChips }}" as="s" hint-placeholder-count="3">
+                  <button onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}</button>
+                </sc-for>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+                <div style="font-size:11px; color:#6b7164; line-height:1.6;">Runs unattended once per day. Diffs are idempotent + transactional per <span style="color:#8a9081;">snapshot_date</span> — a failed run leaves no partial snapshot; re-running a date replaces rather than duplicates.</div>
+                <div style="flex:none; display:flex; align-items:center; gap:9px; padding:8px 14px; border:1px solid #2a3024; background:#0a0b0a;">
+                  <span style="width:7px; height:7px; background:#c6ff3a; border-radius:50%; box-shadow:0 0 6px #c6ff3a; animation:blink 2.4s infinite;"></span>
+                  <div>
+                    <div style="font-size:11px; color:#c6ff3a; font-weight:600; letter-spacing:0.5px;">SCHEDULE ACTIVE</div>
+                    <div style="font-size:10px; color:#8a9081;">daily 06:00 WIB · next in {{ nextRun }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'dashboard', wPerf: 0.55,
+    bandMin: 1000000, bandMax: 2000000, keyword: 'android',
+    brand: 'all', cond: 'all', conf: 'all',
+    mallOnly: false, frontierOnly: true, blended: false,
+    longevity: false, trustPenalty: false, source: 'affiliate',
+    sortKey: 'value', sortDir: 'desc', hover: null, running: false,
+  };
+
+  chipsets = {
+    helio_g85:{name:'Helio G85',gb6s:410,gb6m:1450,antutu:270000,wle:340},
+    helio_g99:{name:'Helio G99',gb6s:735,gb6m:1980,antutu:405000,wle:760},
+    sd680:{name:'Snapdragon 680',gb6s:520,gb6m:1600,antutu:290000,wle:420},
+    sd685:{name:'Snapdragon 685',gb6s:900,gb6m:2050,antutu:430000,wle:720},
+    sd4g2:{name:'Snapdragon 4 Gen 2',gb6s:1010,gb6m:2880,antutu:575000,wle:1120},
+    sd7s2:{name:'Snapdragon 7s Gen 2',gb6s:1060,gb6m:2960,antutu:645000,wle:1360},
+    d6100p:{name:'Dimensity 6100+',gb6s:745,gb6m:2010,antutu:420000,wle:950},
+    d6300:{name:'Dimensity 6300',gb6s:740,gb6m:2060,antutu:435000,wle:1050},
+    d7025:{name:'Dimensity 7025',gb6s:1005,gb6m:2410,antutu:555000,wle:1110},
+    exynos1330:{name:'Exynos 1330',gb6s:975,gb6m:2210,antutu:505000,wle:1200},
+  };
+  fullChips = new Set(['sd7s2','sd4g2','d6300','exynos1330','sd685']);
+
+  listings = [
+    {id:'L01',brand:'Xiaomi',model:'Redmi Note 13',variant:'8/256',chip:'sd685',cond:'new',mall:true,rating:4.9,rc:1243,star:true,price:1899000,ship:0,vou:50000,cash:0,hours:18.2,batt:'v2',os:'3/4',sold:2500,loc:'Jakarta Pusat',prev:1949000,isNew:false,title:'Xiaomi Redmi Note 13 8/256 NFC Garansi Resmi HP Murah Promo COD'},
+    {id:'L02',brand:'Xiaomi',model:'Redmi Note 13',variant:'6/128',chip:'sd685',cond:'new',mall:true,rating:4.8,rc:842,star:true,price:1799000,ship:0,vou:0,cash:0,hours:17.9,batt:'v2',os:'3/4',sold:1800,loc:'Jakarta Pusat',prev:1799000,isNew:false,title:'Redmi Note 13 6/128 Resmi Xiaomi Indonesia Segel BNIB'},
+    {id:'L03',brand:'Xiaomi',model:'Redmi Note 13',variant:'8/256',chip:'sd685',cond:'new',mall:true,rating:4.7,rc:311,star:false,price:1929000,ship:0,vou:0,cash:0,hours:18.2,batt:'v2',os:'3/4',sold:640,loc:'Bekasi',prev:1929000,isNew:false,title:'Redmi Note 13 8/256 Garansi Resmi COD Murah Meriah'},
+    {id:'L04',brand:'Xiaomi',model:'Redmi Note 13',variant:'8/256',chip:'sd685',cond:'used',mall:false,rating:4.6,rc:87,star:false,price:1420000,ship:20000,vou:0,cash:0,hours:18.2,batt:'v2',os:'3/4',sold:53,loc:'Surabaya',prev:1499000,isNew:false,title:'Redmi Note 13 8/256 SECOND bekas mulus fullset ex-inter'},
+    {id:'L05',brand:'Xiaomi',model:'Poco M6 5G',variant:'6/128',chip:'sd4g2',cond:'new',mall:true,rating:4.8,rc:512,star:true,price:1699000,ship:0,vou:0,cash:30000,hours:16.8,batt:'v2',os:'2/3',sold:920,loc:'Tangerang',prev:1749000,isNew:false,title:'POCO M6 5G 6/128 Snapdragon 4 Gen 2 Garansi Resmi Poco Indonesia'},
+    {id:'L06',brand:'Xiaomi',model:'Poco X6 5G',variant:'8/256',chip:'sd7s2',cond:'used',mall:false,rating:4.7,rc:64,star:false,price:1990000,ship:0,vou:0,cash:0,hours:16.5,batt:'v2',os:'3/4',sold:38,loc:'Jakarta Barat',prev:1990000,isNew:true,title:'POCO X6 5G 8/256 second like new ex inter mulus 99% no minus'},
+    {id:'L07',brand:'Infinix',model:'Note 40',variant:'8/256',chip:'helio_g99',cond:'new',mall:true,rating:4.8,rc:735,star:true,price:1899000,ship:0,vou:100000,cash:0,hours:19.1,batt:'v2',os:'2/3',sold:1340,loc:'Jakarta Utara',prev:1999000,isNew:false,title:'Infinix Note 40 8/256 Helio G99 Wireless Charging Garansi Resmi'},
+    {id:'L08',brand:'Infinix',model:'Note 40',variant:'8/256',chip:'helio_g99',cond:'new',mall:false,rating:4.5,rc:120,star:false,price:1879000,ship:15000,vou:0,cash:0,hours:19.1,batt:'v2',os:'2/3',sold:210,loc:'Bandung',prev:1879000,isNew:false,title:'Infinix Note 40 8/256 murah promo garansi resmi cod bayar ditempat'},
+    {id:'L09',brand:'Infinix',model:'Hot 40 Pro',variant:'8/256',chip:'helio_g99',cond:'new',mall:true,rating:4.7,rc:388,star:true,price:1599000,ship:0,vou:0,cash:0,hours:18.5,batt:'v2',os:'2/3',sold:760,loc:'Jakarta Pusat',prev:1649000,isNew:false,title:'Infinix Hot 40 Pro 8/256 NFC Helio G99 Garansi Resmi'},
+    {id:'L10',brand:'realme',model:'realme C67',variant:'8/256',chip:'sd685',cond:'new',mall:true,rating:4.8,rc:611,star:true,price:1999000,ship:0,vou:0,cash:50000,hours:17.3,batt:'v2',os:'2/3',sold:1050,loc:'Jakarta Selatan',prev:1999000,isNew:false,title:'realme C67 8/256 108MP Snapdragon 685 Garansi Resmi realme'},
+    {id:'L11',brand:'Samsung',model:'Galaxy A15',variant:'8/256',chip:'helio_g99',cond:'new',mall:true,rating:4.9,rc:1502,star:true,price:1999000,ship:0,vou:0,cash:0,hours:16.9,batt:'v2',os:'4/5',sold:3100,loc:'Jakarta Pusat',prev:2049000,isNew:false,title:'Samsung Galaxy A15 8/256 Super AMOLED Garansi Resmi SEIN'},
+    {id:'L12',brand:'Samsung',model:'Galaxy A05s',variant:'6/128',chip:'sd680',cond:'new',mall:true,rating:4.8,rc:640,star:true,price:1649000,ship:0,vou:0,cash:0,hours:16.5,batt:'legacy',os:'2/4',sold:980,loc:'Jakarta Pusat',prev:1649000,isNew:false,title:'Samsung Galaxy A05s 6/128 Garansi Resmi SEIN 50MP'},
+    {id:'L13',brand:'Xiaomi',model:'Redmi 13C',variant:'8/256',chip:'helio_g85',cond:'new',mall:true,rating:4.7,rc:520,star:false,price:1399000,ship:0,vou:0,cash:0,hours:17.0,batt:'v2',os:'2/3',sold:1420,loc:'Bekasi',prev:1449000,isNew:false,title:'Xiaomi Redmi 13C 8/256 50MP Garansi Resmi Murah'},
+    {id:'L14',brand:'Tecno',model:'Spark 20 Pro',variant:'8/256',chip:'helio_g99',cond:'new',mall:false,rating:4.4,rc:96,star:false,price:1499000,ship:20000,vou:0,cash:0,hours:17.8,batt:'v2',os:'1/2',sold:180,loc:'Medan',prev:1499000,isNew:true,title:'Tecno Spark 20 Pro 8/256 Helio G99 NFC murah promo cod'},
+    {id:'L15',brand:'realme',model:'realme C67',variant:'8/256',chip:'sd685',cond:'used',mall:false,rating:4.3,rc:41,star:false,price:1550000,ship:0,vou:0,cash:0,hours:17.3,batt:'v2',os:'2/3',sold:22,loc:'Semarang',prev:1550000,isNew:false,title:'realme C67 8/256 bekas second normal semua mulus'},
+    {id:'L16',brand:'vivo',model:'vivo Y28',variant:'8/128',chip:'helio_g85',cond:'new',mall:true,rating:4.6,rc:210,star:false,price:1999000,ship:0,vou:0,cash:0,hours:17.6,batt:'v2',os:'2/3',sold:340,loc:'Jakarta Pusat',prev:1999000,isNew:false,title:'vivo Y28 8/128 5000mAh Garansi Resmi vivo Indonesia'},
+    {id:'L17',brand:'OPPO',model:'OPPO A60',variant:'8/256',chip:'sd680',cond:'new',mall:true,rating:4.7,rc:298,star:true,price:1999000,ship:0,vou:0,cash:0,hours:17.1,batt:'v2',os:'2/4',sold:410,loc:'Jakarta Pusat',prev:1999000,isNew:false,title:'OPPO A60 8/256 Armor Shell Garansi Resmi OPPO'},
+    {id:'L18',brand:'Xiaomi',model:'Redmi Note 13R',variant:'8/256',chip:'d6300',cond:'new',mall:true,rating:4.6,rc:174,star:false,price:1799000,ship:0,vou:0,cash:0,hours:18.0,batt:'v2',os:'2/3',sold:290,loc:'Bekasi',prev:1849000,isNew:true,title:'Redmi Note 13R 8/256 Dimensity 6300 5G Garansi Resmi'},
+    {id:'L19',brand:'Infinix',model:'Note 40',variant:'8/256',chip:'helio_g99',cond:'new',mall:true,rating:4.8,rc:455,star:true,price:1949000,ship:0,vou:0,cash:0,hours:19.1,batt:'v2',os:'2/3',sold:520,loc:'Surabaya',prev:1949000,isNew:false,title:'Infinix Note 40 8/256 resmi official store gratis ongkir'},
+    {id:'L20',brand:'realme',model:'realme 12',variant:'8/256',chip:'d7025',cond:'used',mall:false,rating:4.5,rc:58,star:false,price:1980000,ship:0,vou:0,cash:0,hours:17.4,batt:'v2',os:'2/3',sold:31,loc:'Depok',prev:1980000,isNew:false,title:'realme 12 8/256 second fullset mulus ex inter Dimensity 7025'},
+    {id:'L21',brand:'Xiaomi',model:'Poco M6 5G',variant:'8/256',chip:'sd4g2',cond:'new',mall:true,rating:4.7,rc:333,star:true,price:1949000,ship:0,vou:0,cash:0,hours:16.8,batt:'v2',os:'2/3',sold:480,loc:'Tangerang',prev:1949000,isNew:false,title:'POCO M6 5G 8/256 Snapdragon 4 Gen 2 Garansi Resmi'},
+    {id:'L22',brand:'?',model:null,variant:'8/256',chip:null,cond:'unknown',mall:false,rating:4.2,rc:19,star:false,price:1550000,ship:0,vou:0,cash:0,hours:0,batt:'v2',os:'-',sold:44,loc:'Jakarta Barat',prev:1550000,isNew:true,title:'HP Android RAM 8/256 Baru Garansi Murah Meriah Promo COD Bisa Bayar Ditempat'},
+    {id:'L23',brand:'?',model:null,variant:'6/128',chip:null,cond:'unknown',mall:false,rating:4.0,rc:8,star:false,price:1290000,ship:0,vou:0,cash:0,hours:0,batt:'v2',os:'-',sold:12,loc:'Cikarang',prev:1290000,isNew:false,title:'Smartphone Android 6/128 Layar Besar Baterai Awet Kamera Jernih'},
+  ];
+
+  css(str){ const o={}; String(str).split(';').forEach(d=>{ const i=d.indexOf(':'); if(i<0)return; let k=d.slice(0,i).trim(); const v=d.slice(i+1).trim(); if(!k)return; k=k.replace(/-([a-z])/g,(_,c)=>c.toUpperCase()); o[k]=v; }); return o; }
+  norm(x,mn,mx){ return Math.max(0,Math.min(100,(x-mn)/(mx-mn)*100)); }
+  fmt(n){ return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
+  nextRunStr(){ const now=Date.now(); const wib=new Date(now+7*3600000); let t=Date.UTC(wib.getUTCFullYear(),wib.getUTCMonth(),wib.getUTCDate(),6,0,0)-7*3600000; if(t<=now) t+=86400000; const d=t-now; return Math.floor(d/3600000)+'h '+Math.floor((d%3600000)/60000)+'m'; }
+  jt(n){ return (n/1e6).toFixed(2)+'jt'; }
+
+  build(){
+    const wp = this.state.wPerf;
+    return this.listings.map(l=>{
+      const c = this.chipsets[l.chip];
+      const eff = l.price + (l.ship||0) - (l.vou||0) - (l.cash||0);
+      if(!c){ return {...l, name:'—', cap:null, value:null, eff, confidence:'unmatched'}; }
+      const perf = 0.25*(this.norm(c.gb6s,500,3000)+this.norm(c.gb6m,1500,9000)+this.norm(c.antutu,300000,2600000)+this.norm(c.wle,700,7000));
+      const batt = this.norm(l.hours,6,20);
+      let cap = wp*perf + (1-wp)*batt;
+      if(this.state.longevity){ const oy = parseInt((l.os||'0').split('/')[0])||0; cap = cap*0.94 + this.norm(oy,0,5)*0.06; }
+      let value = cap/(eff/1e6);
+      if(this.state.trustPenalty && !l.mall && l.rating<4.5){ value *= 0.85; }
+      const confidence = this.fullChips.has(l.chip) ? 'full' : 'partial';
+      return {...l, name:c.name, chipName:c.name, perf, batt, cap, value, eff, confidence};
+    });
+  }
+
+  dedup(rows){
+    const g={};
+    rows.forEach(r=>{ if(r.confidence==='unmatched')return; const k=r.model+'|'+r.variant+'|'+r.cond; (g[k]=g[k]||[]).push(r); });
+    return Object.values(g).map(arr=>{ arr.sort((a,b)=>a.eff-b.eff); return {...arr[0], dupCount:arr.length}; });
+  }
+
+  frontierSet(rows){
+    const on=new Set();
+    const groups = this.state.blended ? [rows] : Object.values(rows.reduce((m,r)=>{(m[r.cond]=m[r.cond]||[]).push(r);return m;},{}));
+    groups.forEach(g=>g.forEach(r=>{
+      const dominated = g.some(o=>o!==r && o.eff<=r.eff && o.cap>=r.cap && (o.eff<r.eff||o.cap>r.cap));
+      if(!dominated) on.add(r.id);
+    }));
+    return on;
+  }
+
+  applyFilters(rows){
+    const s=this.state;
+    return rows.filter(r=>
+      r.price>=s.bandMin && r.price<=s.bandMax &&
+      (s.brand==='all'||r.brand===s.brand) &&
+      (s.cond==='all'||r.cond===s.cond) &&
+      (s.conf==='all'||r.confidence===s.conf) &&
+      (!s.mallOnly||r.mall)
+    );
+  }
+
+  renderVals(){
+    const s=this.state;
+    const all=this.build();
+    const deduped=this.dedup(all);
+    const inBand=deduped.filter(r=>r.price>=s.bandMin && r.price<=s.bandMax);
+    const fset=this.frontierSet(inBand);
+    inBand.forEach(r=>r.frontier=fset.has(r.id));
+    let disp=this.applyFilters(inBand);
+    if(s.frontierOnly) disp=disp.filter(r=>r.frontier);
+
+    // ---- chart geometry ----
+    const padL=56,padT=20,plotW=680,plotH=366, x0=s.bandMin,x1=s.bandMax;
+    const px=v=>padL+(v-x0)/(x1-x0)*plotW;
+    const py=v=>padT+(1-v/100)*plotH;
+    const points=disp.map(r=>({
+      id:r.id, cx:px(r.eff).toFixed(1), cy:py(r.cap).toFixed(1),
+      r:r.frontier?5.5:4, fill:r.frontier?'#c6ff3a':'#20261c',
+      stroke:r.frontier?'#c6ff3a':(r.cond==='used'?'#8a9081':'#3a4033'),
+      sw:r.cond==='used'?1.4:1, dash:r.cond==='used'?'2 2':'0',
+      op:r.frontier?1:0.72,
+      onEnter:()=>this.setState({hover:{
+        model:r.model, sub:r.variant+' · '+r.chipName+' · '+(r.cond==='used'?'used':'new')+(r.mall?' · Mall':''),
+        capStr:r.cap.toFixed(1), effStr:this.fmt(r.eff), valStr:r.value.toFixed(1),
+        verdict:r.frontier?'ON FRONTIER':'dominated', vcolor:r.frontier?'#c6ff3a':'#ff6b6b',
+        tx:px(r.eff).toFixed(1), ty:py(r.cap).toFixed(1),
+      }}),
+    }));
+    // frontier polylines per condition
+    const flGroups = s.blended ? {all:disp.filter(r=>r.frontier)} : disp.filter(r=>r.frontier).reduce((m,r)=>{(m[r.cond]=m[r.cond]||[]).push(r);return m;},{});
+    const frontierLines=Object.entries(flGroups).map(([k,arr])=>{
+      arr.sort((a,b)=>a.eff-b.eff);
+      return {pts:arr.map(r=>px(r.eff).toFixed(1)+','+py(r.cap).toFixed(1)).join(' '), dash:k==='used'?'4 3':'0', op:k==='used'?0.5:0.9};
+    }).filter(f=>f.pts.includes(' '));
+
+    const xTicks=[1000000,1250000,1500000,1750000,2000000].map(v=>({x:px(v).toFixed(1),label:(v/1e6).toFixed(2).replace(/0$/,'')+'jt'}));
+    const yTicks=[0,20,40,60,80,100].map(v=>({y:py(v).toFixed(1),ty:(py(v)+3).toFixed(1),label:v}));
+
+    // ---- top frontier ----
+    const topFrontier=inBand.filter(r=>r.frontier).sort((a,b)=>b.value-a.value).slice(0,7).map((r,i)=>({
+      rank:String(i+1).padStart(2,'0'), model:r.model, variant:r.variant, chip:r.chipName,
+      effStr:this.fmt(r.eff), valStr:r.value.toFixed(1), capStr:r.cap.toFixed(1),
+    }));
+
+    // ---- listings table ----
+    const confStyleRaw={full:'font-size:10px;color:#c6ff3a;border:1px solid #3a4a1e;padding:1px 6px;',partial:'font-size:10px;color:#f2b545;border:1px solid #4a3f1e;padding:1px 6px;'};
+    const dir=s.sortDir==='asc'?1:-1;
+    const sorted=[...disp].sort((a,b)=>{
+      const k=s.sortKey; let av=a[k],bv=b[k];
+      if(k==='model'){ return dir*String(av).localeCompare(String(bv)); }
+      return dir*((av||0)-(bv||0));
+    });
+    const listingRows=sorted.map(r=>({
+      model:r.model, variant:r.variant, chip:r.chipName, title:r.title,
+      effStr:this.fmt(r.eff), capStr:r.cap.toFixed(1), valStr:r.value.toFixed(1),
+      confidence:r.confidence, confStyle:this.css(confStyleRaw[r.confidence]),
+      rating:r.rating.toFixed(1), isMall:r.mall, star:r.star, loc:r.loc,
+      frontier:r.frontier, dup:r.dupCount>1, dupCount:r.dupCount,
+      hasDrop:r.prev>r.eff, dropStr:this.jt(r.prev-r.eff),
+    }));
+
+    const cols=[
+      {key:'model',label:'MODEL / LISTING',align:'left'},{key:'chip',label:'CHIPSET',align:'left'},
+      {key:'eff',label:'EFF. PRICE',align:'left'},{key:'cap',label:'CAP',align:'left'},
+      {key:'value',label:'VALUE',align:'left'},{key:'conf',label:'CONF',align:'left'},
+      {key:'trust',label:'SELLER',align:'left'},{key:'x',label:'',align:'right'},
+    ].map(c=>({
+      label:c.label,
+      arrow: s.sortKey===c.key ? (s.sortDir==='asc'?' ▲':' ▼') : '',
+      style:this.css('background:none;border:none;font-family:inherit;font-size:10px;letter-spacing:0.5px;color:'+(s.sortKey===c.key?'#dfe4d8':'#6b7164')+';cursor:pointer;text-align:'+c.align+';padding:0;'),
+      onSort: c.key==='x'||c.key==='trust'||c.key==='conf' ? ()=>{} : ()=>this.setSort(c.key),
+    }));
+
+    // ---- filter chips ----
+    const brands=['all','Xiaomi','Samsung','Infinix','realme','OPPO','vivo','Tecno'];
+    const chip=(active,label,on)=>({label,onClick:on,style:this.css('background:'+(active?'#c6ff3a':'#101310')+';color:'+(active?'#0a0b0a':'#8a9081')+';border:1px solid '+(active?'#c6ff3a':'#262b22')+';font-family:inherit;font-size:11px;padding:5px 11px;cursor:pointer;font-weight:'+(active?'600':'400')+';')});
+    const brandChips=brands.map(b=>chip(s.brand===b,b==='all'?'ALL':b,()=>this.setState({brand:b})));
+    const condChips=[['all','ANY'],['new','NEW'],['used','USED']].map(([k,l])=>chip(s.cond===k,l,()=>this.setState({cond:k})));
+    const confChips=[['all','ALL'],['full','FULL'],['partial','PARTIAL']].map(([k,l])=>chip(s.conf===k,l,()=>this.setState({conf:k})));
+    const sourceChips=[['affiliate','AffiliateFeed'],['internal','InternalEndpoint'],['fixture','Fixture']].map(([k,l])=>chip(s.source===k,l,()=>this.setState({source:k})));
+
+    // ---- catalog ----
+    const usedByCount={};
+    this.listings.forEach(l=>{ if(l.chip) usedByCount[l.chip]=(usedByCount[l.chip]||0)+1; });
+    const chipRows=Object.entries(this.chipsets).map(([k,c])=>({
+      name:c.name, gb6s:c.gb6s, gb6m:c.gb6m, antutu:c.antutu.toLocaleString('en-US'), wle:c.wle, devices:usedByCount[k]||0,
+    })).sort((a,b)=>b.gb6s-a.gb6s);
+    const devSeen=new Set();
+    const deviceRows=all.filter(r=>r.chip).filter(r=>{const k=r.model+r.variant; if(devSeen.has(k))return false; devSeen.add(k); return true;}).map(r=>({
+      model:r.model, variant:r.variant, chip:r.chipName, hours:r.hours.toFixed(1)+'h', os:r.os,
+      battTag:r.batt==='legacy'?'LEGACY':'v2', battStyle:this.css(r.batt==='legacy'?'font-size:8.5px;color:#f2b545;border:1px solid #4a3f1e;padding:0 3px;':'font-size:8.5px;color:#565b50;'),
+      src:'GSMArena',
+    }));
+    const needsMapping=all.filter(r=>r.confidence==='unmatched').map(r=>({title:r.title}));
+
+    // ---- changes ----
+    const priceDrops=inBand.filter(r=>r.prev>r.eff).sort((a,b)=>(b.prev-b.eff)-(a.prev-a.eff)).map(r=>({
+      model:r.model, variant:r.variant, chip:r.chipName, capStr:r.cap.toFixed(1),
+      effStr:this.fmt(r.eff), prevStr:this.fmt(r.prev), dropStr:this.jt(r.prev-r.eff),
+    }));
+    const newArrivals=inBand.filter(r=>r.isNew).sort((a,b)=>b.value-a.value).map(r=>({
+      model:r.model, variant:r.variant, chip:r.chipName, effStr:this.fmt(r.eff),
+      valStr:r.value.toFixed(1), frontier:r.frontier,
+    }));
+
+    // ---- nav ----
+    const navDef=[['dashboard','Dashboard',''],['listings','Listings',String(disp.length)],['catalog','Catalog',needsMapping.length?String(needsMapping.length):''],['changes','Watchlist',String(priceDrops.length+newArrivals.length)],['settings','Settings','']];
+    const nav=navDef.map(([k,label,badge])=>{
+      const active=s.screen===k;
+      return {label,badge,onClick:()=>this.setState({screen:k,hover:null}),
+        bar: active?'#c6ff3a':'transparent',
+        style:this.css('display:flex;align-items:center;justify-content:space-between;width:100%;background:'+(active?'#131711':'transparent')+';border:none;color:'+(active?'#f2f5ec':'#8a9081')+';font-family:inherit;font-size:12.5px;padding:9px 12px 9px 4px;cursor:pointer;text-align:left;letter-spacing:0.3px;'),
+        badgeStyle:this.css('font-size:10px;color:'+(active?'#c6ff3a':'#565b50')+';min-width:18px;text-align:right;'),
+      };
+    });
+
+    const matchPct=Math.round((deduped.length/(deduped.length+needsMapping.length))*100);
+
+    return {
+      nav, keyword:s.keyword, bandLabel:this.jt(s.bandMin)+'–'+this.jt(s.bandMax),
+      stat:{raw:this.listings.length, deduped:deduped.length, matchPct},
+      lastRun:'06:00 WIB', nextRun:this.nextRunStr(),
+      isDash:s.screen==='dashboard', isListings:s.screen==='listings', isCatalog:s.screen==='catalog', isChanges:s.screen==='changes', isSettings:s.screen==='settings',
+      points, frontierLines, xTicks, yTicks, topFrontier,
+      frontierOnly:s.frontierOnly, blended:s.blended, mallOnly:s.mallOnly,
+      onFrontierOnly:()=>this.setState({frontierOnly:!s.frontierOnly}),
+      onBlended:()=>this.setState({blended:!s.blended}),
+      onMallOnly:()=>this.setState({mallOnly:!s.mallOnly}),
+      onLongevity:()=>this.setState({longevity:!s.longevity}), longevity:s.longevity,
+      onTrustPenalty:()=>this.setState({trustPenalty:!s.trustPenalty}), trustPenalty:s.trustPenalty,
+      hasHover:!!s.hover, hover:s.hover||{}, onLeave:()=>this.setState({hover:null}),
+      wPerf:s.wPerf, wPerfStr:(s.wPerf).toFixed(2), wBattStr:(1-s.wPerf).toFixed(2), onWPerf:e=>this.setState({wPerf:parseFloat(e.target.value)}),
+      listingRows, cols, brandChips, condChips, confChips, sourceChips,
+      chipRows, deviceRows, needsMapping, priceDrops, newArrivals,
+      bandMin:s.bandMin, bandMax:s.bandMax, source:s.source,
+      onKeyword:e=>this.setState({keyword:e.target.value}),
+      onBandMin:e=>this.setState({bandMin:parseInt(e.target.value)||0}),
+      onBandMax:e=>this.setState({bandMax:parseInt(e.target.value)||0}),
+    };
+  }
+
+  setSort(key){
+    this.setState(s=>({sortKey:key, sortDir: s.sortKey===key ? (s.sortDir==='asc'?'desc':'asc') : 'desc'}));
+  }
+}
+</script>
+</body>
+</html>
