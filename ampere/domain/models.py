@@ -160,3 +160,56 @@ class Weights(BaseModel):
     @property
     def w_batt(self) -> float:
         return 1.0 - self.w_perf
+
+
+class SkuRollup(BaseModel):
+    """One deduped SKU = the cheapest listing for a ``(model, variant, condition)`` (SPEC §5.8).
+
+    ``best_listing_id`` is the lowest-effective-price instance; ``duplicate_count`` records how
+    many listings collapsed into it. The frontier is computed over the ``best_listing_id`` set.
+    """
+
+    snapshot_date: date
+    model: str
+    variant: str
+    condition: Condition
+    best_listing_id: str
+    duplicate_count: int = 1
+
+
+# ---------------------------------------------------------------------------
+# Snapshot diff (SPEC G5, §8 "Changes"): what changed vs the prior snapshot.
+# ---------------------------------------------------------------------------
+class PriceChange(BaseModel):
+    """An effective-price move for one listing between two snapshots (§5.7 is the value axis)."""
+
+    shopee_id: str
+    prior_effective_price: int
+    current_effective_price: int
+
+    @property
+    def delta(self) -> int:
+        return self.current_effective_price - self.prior_effective_price
+
+
+class SnapshotDiff(BaseModel):
+    """Diff of the current snapshot vs the most recent prior one (arrivals, price moves)."""
+
+    snapshot_date: date
+    prior_date: date | None = None
+    new_arrivals: list[str] = []  # shopee_ids present today, absent in prior
+    removed: list[str] = []  # shopee_ids present in prior, absent today
+    price_drops: list[PriceChange] = []  # effective_price fell (the buyer-relevant move)
+    price_increases: list[PriceChange] = []
+
+
+class RunResult(BaseModel):
+    """Outcome of one ``run_daily`` — returned for the caller/UI and mirrors the ``runs`` row."""
+
+    snapshot_date: date
+    status: str  # "ok" | "failed"
+    source_kind: str
+    listing_count: int  # all resolved listings persisted for the snapshot
+    matched_count: int  # listings that resolved to a device (scoreable)
+    frontier_size: int  # non-dominated best-per-SKU points
+    diff: SnapshotDiff

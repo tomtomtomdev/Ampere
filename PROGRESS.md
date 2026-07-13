@@ -4,14 +4,16 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M2 done — entity resolution implemented **test-first** and green (ruff clean + 69
-tests: 4 smoke, scoring+frontier as before, 30 resolve). `domain/scoring.py`, `domain/frontier.py`
-and `domain/resolve.py` are all live, pure, deterministic, zero I/O. `application/` (`run_daily`,
-`refresh_catalog`) + all `adapters/repos` remain stubbed awaiting M3.
-**Next action:** M3 (persistence + daily use-case — SQLite repos behind the `ports`, then wire
-`run_daily`: FixtureSource → resolve → effective_price → **dedup cheapest-per-SKU** (§5.8) → score
-→ persist → diff vs prior snapshot). Idempotent + transactional per `snapshot_date` (SC6). TDD
-against `FixtureSource` + in-memory SQLite.
+**Phase:** M3 done — persistence + daily use-case implemented **test-first** and green (ruff clean
++ 106 tests: +37 for M3 — 6 pricing, 5 dedup, 5 diff, 13 repos, 8 run_daily). SQLite repos +
+`SqliteUnitOfWork` are live behind the `ports`; `application/run_daily.py` wires the full pipeline
+idempotently + transactionally per `snapshot_date`. All three DoD scenarios pass (diff across two
+runs; re-run = identical scores + no dup rows; forced mid-run failure leaves the prior snapshot
+intact). `main()` stays an M6 stub (entrypoint/config wiring); `refresh_catalog` still stubbed.
+**Next action:** M4 (Web UI — FastAPI endpoints backed by the repos + static SPA, 5 screens; Pareto
+scatter as inline SVG; weight sliders live re-score). Read side is ready: `uow` repos expose
+`for_snapshot` / `latest_snapshot_before`; `RunResult` carries the `SnapshotDiff` for the Changes
+screen. Web layer stays thin — endpoints call repos/use-cases, no business logic (CLAUDE.md).
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12). `uv pip install -e ".[dev,web]"`.
 
 ## Milestone tracker
@@ -21,13 +23,50 @@ against `FixtureSource` + in-memory SQLite.
 | M0 | Skeleton + framework docs         | ✅ done  | repo, schema, FixtureSource, stubs, design shell — green |
 | M1 | Scoring core (pure)               | ✅ done  | normalize/perf/batt/cap/value + Pareto frontier; TDD, deterministic, ruff-clean |
 | M2 | Entity resolution                 | ✅ done  | clean_title + resolve; 100% on 21-title golden set (≥85% SC2); alias override + needs-mapping |
-| M3 | Persistence + daily use-case      | ☐ todo  | snapshot diffing; new arrivals/price drops |
+| M3 | Persistence + daily use-case      | ✅ done  | SQLite repos + UoW; run_daily pipeline; idempotent+transactional (SC6); snapshot diff |
 | M4 | Web UI (5 menu screens)           | ☐ todo  | Pareto scatter; weight sliders live re-score |
 | M5 | Real Shopee source                | ☐ todo  | affiliate feed preferred; internal best-effort |
 | M6 | Catalog refresh + schedule + skill| ☐ todo  | monthly scrapers; cron→/run; id-android-market |
 
 ## Decisions log
 
+- **M3 persistence + daily use-case done (2026-07-13):**
+  - **New pure-domain modules** (test-first, zero I/O): `domain/pricing.py` (`effective_price` §5.7
+    + `price_confidence`), `domain/dedup.py` (`dedup_cheapest_per_sku` §5.8), `domain/diff.py`
+    (`compute_diff` → `SnapshotDiff`). **New models:** `SkuRollup`, `PriceChange`, `SnapshotDiff`,
+    `RunResult`.
+  - **Ports grown:** `SkuRollupRepo`; `UnitOfWork` (`@runtime_checkable`, bundles the 6 repos +
+    owns the transaction boundary); `ListingRepo.latest_snapshot_before` (diff baseline).
+    `SqliteDeviceRepo`/`SqliteAliasRepo` also satisfy the resolver's `DeviceCatalogPort` /
+    `AliasCatalogPort` structurally, so `run_daily` passes them straight to `resolve`.
+  - **SQLite adapters** (`adapters/repos/sqlite_repos.py`): all 6 repos + `SqliteUnitOfWork`.
+    Connection runs **autocommit** (`isolation_level=None`); single writes (catalog upserts,
+    `runs.start`/`finish`) autocommit immediately, while the daily replace
+    (`listings`+`scores`+`sku_rollup`+`runs.finish`) is made **atomic inside
+    `SqliteUnitOfWork.transaction()`** (explicit `BEGIN`/`COMMIT`/`ROLLBACK`). **Repos never
+    self-commit** → they compose cleanly inside that boundary.
+  - **SC6 pattern:** `runs.start` writes the `running` marker (autocommitted, survives a later
+    rollback) → data write in a tx → on failure the tx rolls back the partial snapshot and
+    `runs.finish('failed')` is recorded outside the tx (observability survives). Verified by the
+    forced-mid-run-failure test (patched `scores.replace_snapshot` raises after `listings` written).
+  - **Persistence shape:** ALL resolved listings (matched + unmatched) go to `listings`;
+    `sku_rollup` holds the cheapest-per-SKU collapse (`best_listing_id` + `duplicate_count`). Score
+    **all matched+scoreable** listings; `is_frontier` set only on the best-per-SKU points on the
+    Pareto frontier. Unmatched → stored, unscored, `device_id NULL` (needs-mapping queue, §5.4).
+  - **SKU key = `(device_id, condition)`** (device_id ⇒ model+variant); the rollup's model/variant
+    text is derived from the device. **Mall→new proxy** applied in `run_daily` (application), NOT
+    the resolver (title-tokens-only stays pure): `condition UNKNOWN` + `is_mall` ⇒ `NEW` (Appendix A).
+  - **`price_confidence`** = `full` only when all three cost components are present (>0), else
+    `partial` — `partial` is the v1 norm (search payload is sparse, Appendix A). **`trust_score`
+    deferred → `None`** (SPEC §5.6 gives no composition formula; don't fabricate weights — see open
+    question). A matched device lacking chipset/benchmarks/battery is **unscoreable → excluded from
+    the frontier** (no fabrication, invariant #4); won't occur with a seeded catalog.
+  - **Diff** is over ALL listings keyed on `shopee_id`, compared on `effective_price`; baseline =
+    `latest_snapshot_before(snapshot_date)` (strictly earlier) so a **same-date re-run diffs vs the
+    prior day, not itself**.
+  - **Test seed catalog is test-local + illustrative** (6 chipsets / 6 devices covering the 7
+    matchable fixture listings). The real on-disk catalog seed is M6 (open question stands).
+  - Not committed (awaiting user).
 - **M2 entity resolution done (2026-07-13):**
   - `clean_title` + `resolve` in `domain/resolve.py`, **test-first** from SPEC §7 (30 tests,
     `tests/test_resolve.py`). Pure/deterministic/zero-I/O; `DeviceCatalogPort`/`AliasCatalogPort`
@@ -156,6 +195,10 @@ against `FixtureSource` + in-memory SQLite.
 
 ## Open questions
 
+- [ ] **`trust_score` composition (from M3):** §5.6 folds rating / Mall / Star into a `trust_score`
+      but gives no weights, so M3 leaves it `None` (stored raw fields suffice for filtering). Define
+      a formula in M4/M5 when the UI/source need is concrete — filter + column, off `capability`
+      (§5.6), no fabricated weights. (default: derive when M4 wires the Listings/Settings filters)
 - [ ] **#3 residual:** chipset-sharing pushes most listings to `full`; is a per-metric imputation
       fallback wanted for the rare SoC with zero Wild Life data, or just mark `partial`? (default: mark partial)
 - [ ] **Legacy battery bound (from M1):** `battery()` currently supports only Active-Use-v2;
