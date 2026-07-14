@@ -70,6 +70,18 @@ class Device(BaseModel):
     scoring_notes: str | None = None
 
 
+class BatteryReading(BaseModel):
+    """One device's battery figure scraped from GSMArena (SPEC §5.1, Appendix B).
+
+    Source-agnostic boundary data (like ``RawListing``): the battery scraper emits this, the
+    ``refresh_catalog`` use-case matches it to a device by name. ``metric_kind`` records WHICH test
+    produced the number so v2 Active Use and legacy Endurance are never mixed silently (§5.1)."""
+
+    device: str  # GSMArena display name, matched to a ``Device`` by normalized name
+    active_use_hours: float  # decimal hours (GSMArena's "15:23h" == 15.38); higher = better
+    metric_kind: BatteryMetricKind = BatteryMetricKind.ACTIVE_USE_V2
+
+
 # ---------------------------------------------------------------------------
 # Listings (daily; the only fast-moving data — SPEC §2)
 # ---------------------------------------------------------------------------
@@ -201,6 +213,14 @@ class SnapshotDiff(BaseModel):
     removed: list[str] = []  # shopee_ids present in prior, absent today
     price_drops: list[PriceChange] = []  # effective_price fell (the buyer-relevant move)
     price_increases: list[PriceChange] = []
+
+
+class CatalogRefreshResult(BaseModel):
+    """Outcome of one ``refresh_catalog`` (SPEC §6, M6) — the monthly reference-data refresh."""
+
+    chipsets_upserted: int = 0  # SoC benchmark rows written (one covers all its phones — SC7)
+    devices_battery_updated: int = 0  # devices whose Active Use hours were matched + set
+    battery_unmatched: list[str] = []  # scraped device names with no catalog device (surface later)
 
 
 class RunResult(BaseModel):

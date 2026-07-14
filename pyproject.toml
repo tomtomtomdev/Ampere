@@ -16,10 +16,17 @@ web = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
 ]
+# Monthly catalog scrapers (M6). Only the manual-assisted refresh needs an HTML parser; the daily
+# run does not, so this stays optional. lxml is preferred at runtime if present but not required —
+# the parser falls back to the stdlib html.parser (one fewer fragile build dep).
+scrape = [
+    "beautifulsoup4>=4.12",
+]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "ruff>=0.5",
+    "ampere[scrape]",
 ]
 
 [project.scripts]

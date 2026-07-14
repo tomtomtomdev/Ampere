@@ -13,6 +13,9 @@ owns the transaction so a failed run leaves the prior snapshot intact (SC6).
 
 from __future__ import annotations
 
+import logging
+import os
+from dataclasses import dataclass
 from datetime import date
 
 from ampere.application.snapshot import score_snapshot
@@ -34,6 +37,8 @@ from ampere.domain.pricing import effective_price, price_confidence
 from ampere.domain.resolve import resolve
 from ampere.ports.repositories import UnitOfWork
 from ampere.ports.search_source import SearchSource
+
+logger = logging.getLogger("ampere.run_daily")
 
 
 def _build_listing(
@@ -112,6 +117,108 @@ def run_daily(
         raise
 
 
+def catch_up(
+    uow: UnitOfWork,
+    source: SearchSource,
+    *,
+    today: date,
+    keyword: str = DEFAULT_KEYWORD,
+    price_min: int = DEFAULT_PRICE_MIN,
+    price_max: int = DEFAULT_PRICE_MAX,
+    mall_only: bool = False,
+    weights: Weights | None = None,
+) -> RunResult | None:
+    """Run today's snapshot unless one already succeeded today (SPEC §8a launch-time catch-up, SC8).
+
+    Guarded so a machine that was asleep at the scheduled time still gets exactly one run for the
+    date (via startup), while a machine that already ran skips — never zero, never a duplicate, and
+    never a redundant hit on the fragile source. A *failed* today still retries (``last_successful``
+    only counts ``ok``)."""
+    last = uow.runs.last_successful()
+    if last is not None and last >= today:
+        logger.info("catch-up: %s already has a successful run — skipping", today)
+        return None
+    logger.info("catch-up: running the daily snapshot for %s", today)
+    return run_daily(
+        source=source, uow=uow, snapshot_date=today, keyword=keyword,
+        price_min=price_min, price_max=price_max, mall_only=mall_only, weights=weights,
+    )
+
+
+@dataclass
+class RunConfig:
+    """Headless-run configuration, read from the environment by the OS scheduler (SPEC §8a).
+
+    The default source is ``fixture`` so a bare invocation is safe + offline; point it at a live
+    source with ``AMPERE_SOURCE=affiliate`` (preferred, ToS-safe) or ``internal`` (best-effort)."""
+
+    source_kind: str = "fixture"
+    keyword: str = DEFAULT_KEYWORD
+    price_min: int = DEFAULT_PRICE_MIN
+    price_max: int = DEFAULT_PRICE_MAX
+    mall_only: bool = False
+    db_path: str | None = None  # None → the adapter's DEFAULT_DB_PATH
+    cache_dir: str | None = None  # JsonFileCache dir for a live source ("cache hard", §6)
+
+    @classmethod
+    def from_env(cls, env: dict[str, str] | None = None) -> RunConfig:
+        env = os.environ if env is None else env
+        flag = env.get("AMPERE_MALL_ONLY", "").strip().lower() in {"1", "true", "yes", "on"}
+        return cls(
+            source_kind=env.get("AMPERE_SOURCE", cls.source_kind),
+            keyword=env.get("AMPERE_KEYWORD", cls.keyword),
+            price_min=int(env.get("AMPERE_PRICE_MIN", cls.price_min)),
+            price_max=int(env.get("AMPERE_PRICE_MAX", cls.price_max)),
+            mall_only=flag,
+            db_path=env.get("AMPERE_DB") or None,
+            cache_dir=env.get("AMPERE_CACHE_DIR") or None,
+        )
+
+
 def main() -> int:
-    """Headless entrypoint (``ampere-run-daily``) for the OS scheduler + launch-time catch-up."""
-    raise NotImplementedError("M6: wire config + adapters, then call run_daily()")
+    """Headless entrypoint (``ampere-run-daily``) for the OS scheduler + launch-time catch-up (SC8).
+
+    Composition root for the daily job: wires the SQLite UoW, the configured ``SearchSource`` (with
+    an on-disk cache for live sources), and the real catalog seed around ``catch_up``. Adapter
+    imports are local so the module's use-case logic stays adapter-free (invariant #1). A failed run
+    is transactional (SC6): it leaves no partial snapshot and exits non-zero for the scheduler."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+    from ampere.adapters.repos import db
+    from ampere.adapters.repos.sqlite_repos import SqliteUnitOfWork
+    from ampere.adapters.sources import build_source
+    from ampere.adapters.sources._common import JsonFileCache
+    from ampere.application.catalog_seed import load_seed
+
+    config = RunConfig.from_env()
+    conn = db.connect(config.db_path or db.DEFAULT_DB_PATH)
+    db.create_schema(conn)
+    uow = SqliteUnitOfWork(conn)
+    try:
+        if not uow.devices.all():  # first run on this DB → load the real reference catalog (§6)
+            chips, devs = load_seed(uow)
+            logger.info("seeded catalog: %d chipsets, %d devices", chips, devs)
+
+        source_kwargs: dict = {}
+        if config.cache_dir and config.source_kind != "fixture":
+            source_kwargs["cache"] = JsonFileCache(config.cache_dir)
+        source = build_source(config.source_kind, **source_kwargs)
+
+        result = catch_up(
+            uow, source, today=date.today(), keyword=config.keyword,
+            price_min=config.price_min, price_max=config.price_max, mall_only=config.mall_only,
+        )
+        if result is None:
+            logger.info("already ran today — nothing to do")
+        else:
+            logger.info(
+                "run %s: %d listings, %d matched, frontier %d",
+                result.snapshot_date, result.listing_count, result.matched_count,
+                result.frontier_size,
+            )
+        return 0
+    except Exception:
+        logger.exception("daily run failed (transactional — no partial snapshot written)")
+        return 1
+    finally:
+        uow.close()

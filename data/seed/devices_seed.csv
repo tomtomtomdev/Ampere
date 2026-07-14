@@ -1,0 +1,11 @@
+brand,model,variant,chipset_name,os_updates_years,security_updates_years,update_source
+Xiaomi,Redmi Note 13 5G,8/256,Dimensity 6080,2,3,Xiaomi budget tier (est.)
+Xiaomi,Redmi Note 13,8/256,Snapdragon 685,2,3,Xiaomi budget tier (est.)
+Xiaomi,Redmi 13C,8/256,Helio G85,2,3,Xiaomi budget tier (est.)
+Xiaomi,Poco M6 5G,6/128,Snapdragon 4 Gen 2,2,3,Xiaomi budget tier (est.)
+Xiaomi,Poco M6 Pro,8/256,Helio G99 Ultra,2,3,Xiaomi budget tier (est.)
+Infinix,Hot 40 Pro,8/256,Helio G99,2,2,Infinix tier (est.)
+Infinix,Note 40,8/256,Helio G99 Ultimate,2,2,Infinix tier (est.)
+Samsung,Galaxy A15,8/256,Helio G99,4,4,Samsung A-series pledge
+realme,C67,8/256,Snapdragon 685,2,2,realme C-series (est.)
+realme,C65,8/256,Helio G85,2,2,realme C-series (est.)

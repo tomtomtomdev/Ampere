@@ -27,7 +27,7 @@ from ampere.adapters.repos.sqlite_repos import SqliteUnitOfWork
 from ampere.adapters.sources.fixture_source import FixtureSource
 from ampere.application import views
 from ampere.application.demo_seed import bootstrap
-from ampere.application.run_daily import run_daily
+from ampere.application.run_daily import catch_up, run_daily
 from ampere.application.views import ViewParams
 from ampere.config import DEFAULT_KEYWORD, DEFAULT_PRICE_MAX, DEFAULT_PRICE_MIN
 from ampere.domain.models import RunResult, Weights
@@ -198,17 +198,22 @@ def _default_uow_factory() -> UnitOfWork:
 
 
 def _bootstrap_default_db() -> None:
-    """Seed the on-disk DB with the demo catalog + a fixture snapshot if it has never run.
+    """Seed the demo DB on first launch, then catch up today's run on every launch (SC8).
 
-    Dev convenience so ``uvicorn ampere.web.api:app`` shows data immediately (M4). The real catalog
-    + automatic daily scheduler are M6; here we only seed when there is no successful run yet.
+    Dev convenience so ``uvicorn ampere.web.api:app`` shows data immediately (M4): a fresh DB gets
+    the demo catalog + its first fixture snapshots. On a DB that has already run, the launch-time
+    catch-up (SPEC §8a) runs today's snapshot iff no successful run exists for today — so a laptop
+    that was asleep at the scheduled time still gets exactly one run for the date via startup
+    (idempotent per ``snapshot_date`` — never zero, never a duplicate).
     """
     uow = _default_uow_factory()
     try:
         if uow.runs.last_successful() is None:
-            bootstrap(uow, today=date.today())
+            bootstrap(uow, today=date.today())  # first launch: seed demo catalog + snapshots
+        else:
+            catch_up(uow, FixtureSource(), today=date.today())  # subsequent launches: SC8 catch-up
     finally:
-        uow.close()  # type: ignore[attr-defined]
+        uow.close()  # type: ignore[attr-defined]  # type: ignore[attr-defined]
 
 
 app = create_app(uow_factory=_default_uow_factory, on_startup=_bootstrap_default_db)

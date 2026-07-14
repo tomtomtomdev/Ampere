@@ -1,0 +1,14 @@
+# Ampere — automatic daily fetch (SPEC §8a, SC8). Linux cron equivalent of the launchd agent.
+#
+# Runs the SAME `ampere-run-daily` entrypoint the UI's "Run now" button calls (one code path).
+# Runs are idempotent per snapshot_date, so a duplicate trigger is harmless. Launch-time catch-up
+# (a machine that was off at 06:00) is handled separately by the web app's startup hook and/or a
+# @reboot line below — never zero runs for a day, never a duplicate.
+#
+# Install (edit the paths first — see deploy/README.md), then:  crontab deploy/cron/ampere.crontab
+#
+# ┌ min  ┌ hour  ┌ dom  ┌ mon  ┌ dow
+0 6 * * *  AMPERE_SOURCE=affiliate AMPERE_DB=$HOME/ampere/data/ampere.db AMPERE_CACHE_DIR=$HOME/ampere/data/cache AMPERE_KEYWORD=android AMPERE_PRICE_MIN=1000000 AMPERE_PRICE_MAX=2000000 /opt/ampere/.venv/bin/ampere-run-daily >> $HOME/ampere/data/logs/run-daily.log 2>&1
+
+# Launch-time catch-up: on boot, run once (idempotent) in case the machine was off at 06:00.
+@reboot    AMPERE_SOURCE=affiliate AMPERE_DB=$HOME/ampere/data/ampere.db AMPERE_CACHE_DIR=$HOME/ampere/data/cache /opt/ampere/.venv/bin/ampere-run-daily >> $HOME/ampere/data/logs/run-daily.log 2>&1

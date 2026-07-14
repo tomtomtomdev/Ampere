@@ -54,16 +54,19 @@ frontier     = non-dominated (price↓, capability↑) points
 
 Clean-Architecture package under `ampere/` (`domain` → `application` → `ports` → `adapters` →
 `web`); tests in `tests/`; SQLite schema in `ampere/adapters/repos/schema.sql`; seed data in
-`data/seed/`. **M0 (skeleton) is done and green**; M1 (scoring core, TDD, zero network) is next.
+`data/seed/`; OS-scheduler install assets in `deploy/`. **M0–M6 are done and green** (242 tests,
+ruff-clean) — the full pipeline runs end-to-end; see PROGRESS for the v2 backlog.
 
 ```bash
 uv venv .venv && uv pip install --python .venv -e ".[dev,web]"
 .venv/bin/pytest && .venv/bin/ruff check ampere tests   # keep both green (ruff-clean is an invariant)
 ```
 
-Domain logic (`scoring.py`, `frontier.py`, `resolve.py`) is intentionally stubbed with
-`NotImplementedError` — implement each **test-first** from SPEC (invariant #2). A runnable reference
-of the scoring/dedup/frontier math is in `design/Ampere.dc.html`; port it test-first, never paste.
+The domain math (`scoring.py`, `frontier.py`, `resolve.py`) was ported **test-first** from
+`design/Ampere.dc.html` (never pasted). When extending, keep the workflow: write the failing test
+from SPEC first (invariant #2). The live transports (Shopee `search_items`, GSMArena HTML) are
+injected as `fetch` callables so all parsing stays pure + offline-tested; the `httpx` fetchers are
+best-effort and not exercised in CI.
 
 ## Skills (installed under `.claude/skills/` — they auto-trigger)
 

@@ -17,26 +17,42 @@ The UI design of record is in [`design/`](design/) (see [`design/NOTES.md`](desi
 
 ```
 ampere/
-  domain/       pure logic + pydantic models — no I/O        (scoring, frontier, resolve, models)
-  application/  use-cases (run_daily) orchestrating domain + ports
+  domain/       pure logic + pydantic models — no I/O   (scoring, frontier, resolve, catalog, models)
+  application/  use-cases orchestrating domain + ports  (run_daily, refresh_catalog, catalog_seed, snapshot, views)
   ports/        interfaces (Protocols) — the only way I/O enters
-  adapters/     concrete I/O: sources/ (fixture + real), repos/ (SQLite), scrapers/ (M6)
+  adapters/     concrete I/O: sources/ (fixture + real Shopee), repos/ (SQLite), scrapers/ (GSMArena)
   web/          thin FastAPI + static SPA (design system in web/static/)
-tests/          pytest — domain is fully testable with zero network
-data/seed/      chipsets_seed.csv (real GB6/AnTuTu-v10/WildLifeExtreme per SoC)
+tests/          pytest — domain + parsing are fully testable with zero network (242 tests)
+data/seed/      chipsets_seed.csv + devices_seed.csv (real SoC benchmarks + ID-band device→chipset)
+deploy/         OS-scheduler install assets — launchd plist + cron (automatic daily fetch, SC8)
 skills/         installable .skill packages (active copies auto-load from .claude/skills/)
 ```
 
 ## Dev
 
 ```bash
-uv venv .venv && uv pip install --python .venv -e ".[dev,web]"
-.venv/bin/pytest            # M0: green on the skeleton
+uv venv .venv && uv pip install --python .venv -e ".[dev,web]"   # dev pulls the `scrape` extra (bs4)
+.venv/bin/pytest                        # 242 tests, no network
 .venv/bin/ruff check ampere tests
-uvicorn ampere.web.api:app --reload   # serves the static shell (data endpoints land in M4)
+uvicorn ampere.web.api:app --reload     # full 5-screen UI; seeds a demo DB, then catches up today
 ```
+
+## Run the daily job
+
+```bash
+# Headless entrypoint the OS scheduler + the UI's "Run now" both call (idempotent per snapshot_date):
+AMPERE_SOURCE=fixture .venv/bin/ampere-run-daily          # offline default; first run seeds the catalog
+AMPERE_SOURCE=affiliate AMPERE_DB=~/ampere/data/ampere.db .venv/bin/ampere-run-daily   # live (ToS-safe)
+```
+
+The daily fetch is **automatic once per day** via an OS scheduler + launch-time catch-up (SPEC §8a,
+SC8) — see [`deploy/README.md`](deploy/README.md) to install the launchd agent (macOS) or crontab
+(Linux). The monthly reference-data refresh (GSMArena → per-chipset benchmarks + per-device battery)
+runs through `application/refresh_catalog.py`.
 
 ## Status
 
-M0 (skeleton + schema + FixtureSource + design shell) is in place and green. **M1 (scoring core,
-TDD, zero network) is next** — see PROGRESS.
+**M0–M6 done and green** (242 tests, ruff-clean). Full pipeline: real Shopee source →
+resolve → effective price → dedup → score → Pareto frontier → persisted + diffed → web UI;
+GSMArena catalog scrapers + refresh; automatic daily scheduling. See PROGRESS for the v2 backlog
+(confirm affiliate feed access; first live GSMArena refresh; optional Telegram push).

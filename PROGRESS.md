@@ -4,27 +4,35 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M5 done — real Shopee sources implemented **test-first** and green (ruff clean + 192
-tests: +61 for M5 — 32 `test_internal_endpoint`, 21 `test_affiliate_feed`, 8 `test_source_contract`).
-Two live `SearchSource` impls behind the port, each with the **live transport injected** as a
-`fetch` callable so all parsing/pagination/filtering is unit-tested offline (no network in CI):
-`InternalEndpointSource` (HAR-verified `search_items` — `fe_filter_options` Mall + price `▶◀` band,
-micro-unit `÷100000`, `item_basic` field map, harga-coret dropped) and `AffiliateFeedSource` (ToS-
-safe/preferred but narrower — clean price + affiliate `tracking_link`, no fabricated Mall/trust).
-Shared `_common.py` gives caching (`InMemoryCache`/`JsonFileCache`), bounded `fetch_with_backoff`,
-and one `SourceFetchError`. New `sources.build_source(kind)` registry is the composition-root
-selector. **SC4 verified end-to-end** (scratch check): an `InternalEndpointSource` with a fake
-transport drove the **unmodified** `run_daily` — payload → ÷100000 price → resolve → Mall→new →
-`full` score → frontier — zero scoring/UI changes.
-**Next action:** M6 (catalog refresh + scheduling + skill) — GSMArena-first monthly scrapers
-(`gsmarena_perf_parser.py` is ready in the skill), seed the real `chipsets`/`devices` catalog,
-`os/security_updates_years`, and the launchd/cron automatic daily scheduler + launch-time catch-up
-(SC8). `run_daily.main()` is still the `NotImplementedError("M6: wire config + adapters")` stub —
-M6 wires `build_source` + config + a `JsonFileCache` there. To point the web/daily job at a live
-source today it's a one-liner: `source_factory=lambda: build_source("affiliate")` (default stays
-`FixtureSource` so the demo runs offline).
-**Env:** Python venv at `.venv` (Python 3.14 available; target 3.12). `uv pip install -e ".[dev,web]"`.
-Run the UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on first start).
+**Phase:** M6 done — catalog refresh + automatic scheduling, all **test-first** and green (ruff
+clean + 242 tests: +50 for M6 — 11 `test_gsmarena_perf`, 8 `test_gsmarena_battery`, 7
+`test_refresh_catalog`, 8 `test_catalog_seed`, 8 `test_scheduler`, 8 `test_deploy_assets`).
+GSMArena scrapers now live in `adapters/scrapers/` behind an injected `fetch(url)->html` transport
+(all parsing/rollup pure + offline-tested; the `httpx` fetchers are best-effort, untested — the M5
+seam pattern): `gsmarena_perf` (one review page → GB6/AnTuTu-**v10**/WildLife-**Extreme** per
+chipset, median rollup, the per-`.phones`-tab gotcha handled) + `gsmarena_battery` (Active Use
+`HH:MMh`→decimal hours). New `application/refresh_catalog.py` upserts chipsets (provenance +
+`fetched_at`) and attaches battery to devices by normalized name (SC7). New
+`application/catalog_seed.py` loads the real `data/seed/{chipsets,devices}_seed.csv`: device→chipset
+mappings + `os/security_updates_years` are honest facts (update years flagged pledge-vs-estimate in
+`update_source`, §11.1), while battery/benchmarks come from the scrape — **never fabricated** (an
+unknown SoC gets a "pending: gsmarena refresh" chipset stub so the FK holds). `run_daily.main()` is
+now wired (config from env via `RunConfig.from_env`, SQLite UoW, `build_source`, `JsonFileCache`,
+first-run `load_seed`) around a **guarded `catch_up()`** (SC8); launch-time catch-up also runs on
+web startup. Shipped OS-scheduler install assets in `deploy/` (launchd plist @06:00 + `RunAtLoad`;
+cron + `@reboot`; install README) with a `plistlib` validity test.
+**End-to-end verified (scratch):** headless `ampere-run-daily` seeds+runs then **skips** on re-run
+(exactly one `runs` row, SC8); a `refresh_catalog` filling the ID-band SoCs then makes the same
+unmodified fixture run **score 6 listings + a 3-point Pareto frontier** — the monthly-refresh →
+daily-score loop closes (SC7 + SC4).
+**Next action:** commit M6 (awaiting user). Then the v2 backlog (see open questions): capture a real
+affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the first **live** GSMArena
+`refresh_catalog` and expand the device seed; optional Telegram daily push.
+**Env:** Python venv at `.venv` (Python 3.14 available; target 3.12).
+`uv pip install --python .venv -e ".[dev,web]"` (the `dev` extra self-references `ampere[scrape]` =
+`beautifulsoup4`; lxml optional, stdlib `html.parser` fallback). Headless run:
+`AMPERE_SOURCE=fixture .venv/bin/ampere-run-daily`. Web UI:
+`.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on first start, then catches up).
 
 ## Milestone tracker
 
@@ -36,10 +44,64 @@ Run the UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB o
 | M3 | Persistence + daily use-case      | ✅ done  | SQLite repos + UoW; run_daily pipeline; idempotent+transactional (SC6); snapshot diff |
 | M4 | Web UI (5 menu screens)           | ✅ done  | FastAPI + vanilla-JS SPA; inline-SVG scatter; sliders re-score server-side; browser-verified |
 | M5 | Real Shopee source                | ✅ done  | InternalEndpointSource (HAR contract) + AffiliateFeedSource behind injected transport; shared contract suite; SC4 verified |
-| M6 | Catalog refresh + schedule + skill| ☐ todo  | monthly scrapers; cron→/run; id-android-market |
+| M6 | Catalog refresh + schedule + skill| ✅ done  | GSMArena perf+battery scrapers (injected transport) + refresh_catalog + real seed loader + `main()`/catch-up (SC8) + launchd/cron assets; skill was M2 |
 
 ## Decisions log
 
+- **M6 catalog refresh + scheduling done (2026-07-14):**
+  - **Same transport seam as M5, applied to scrapers.** Each GSMArena scraper injects a
+    `fetch(url)->html` callable, so `parse_review_html`/`rollup_chipsets` and
+    `parse_battery_html`/`parse_active_use` are pure + unit-tested offline against DOM-accurate
+    fixtures (invariant #2). The `_Httpx*Fetcher` defaults are best-effort and **not exercised in
+    tests** (no CI network). GSMArena is the low-risk counterpart to Shopee — no anti-bot/session.
+  - **`gsmarena_perf`:** ported the skill's `gsmarena_perf_parser.py` into the package and **cleaned
+    it** — the stale "flat concatenated" docstring/`_bar_is_full` (unused) removed; the code already
+    iterated one `div.phones` **per tab** (the documented gotcha) and now says so. Added
+    `rollup_chipsets` = median-per-metric per SoC, keeping only canonical tabs (**v10**, **WildLife
+    Extreme Highest**) so versions never mix (§5.1). Chipset id = `slugify(name)`; variant suffixes
+    ("Extreme"/"Ultra") stay distinct rows.
+  - **`gsmarena_battery`:** Active Use `HH:MMh` → decimal hours; unparseable rows dropped (never a
+    fabricated 0 — invariant #4); tagged `active_use_v2` so legacy Endurance is never mixed. The
+    ranking-table markup is **assumed** (Appendix B's HAR had no page body) and confined to
+    `parse_battery_html`/`parse_active_use` — the one place to adjust once a live page is captured
+    (same posture as M5's `AffiliateFeedSource.parse_offer`).
+  - **New pure-domain module `domain/catalog.py`** (`chipset_id`/`chipset_vendor`/`device_id`,
+    `slugify`) so the scraper adapters AND the application seed loader derive ids identically
+    **without the application importing an adapter** (invariant #1). `gsmarena_perf` re-exports
+    `slugify` for its existing callers.
+  - **New ports `catalog_source.py`** (`PerfCatalogSource`/`BatteryCatalogSource`) → the
+    `refresh_catalog` use-case depends on Protocols, not scrapers. Benchmarks attach to the
+    **chipset** (one row covers every phone with that SoC — SC7); battery attaches per **model**
+    (cell/display/tuning don't change across RAM/ROM variants, so one reading fills all variant
+    rows). An unmatched battery reading is **surfaced** in the result, not guessed onto a device.
+    A battery refresh must **not** touch `os/security_updates_years`/`update_source` (§11.1 is
+    separate provenance) — asserted.
+  - **Real catalog seed (`catalog_seed.py` + `devices_seed.csv`).** `chipsets_seed.csv` (the one
+    real scraped artifact, 13 high-band SoCs) loads as-is; `devices_seed.csv` = 10 confident ID
+    1–2jt phones with **factual** device→chipset mappings + brand-tier update-longevity (flagged
+    pledge/estimate in `update_source`). **No fabricated benchmark/battery numbers**: the device-band
+    SoCs get "pending refresh" chipset stubs (name+vendor only) — those listings are matched but
+    unscoreable until the first `refresh_catalog` fills the numbers (exactly the SPEC build order).
+    So a fresh headless run today = 9 listings / 7 matched / **frontier 0**; after a refresh filling
+    those SoCs, the same run scores 6 / frontier 3 (verified). `demo_seed` (illustrative, for the
+    offline UI) is unchanged and separate.
+  - **`main()` wired + `catch_up()` (SC8).** `RunConfig.from_env` reads `AMPERE_SOURCE`/`_KEYWORD`/
+    `_PRICE_MIN`/`_MAX`/`_MALL_ONLY`/`_DB`/`_CACHE_DIR` (default source `fixture` = safe/offline).
+    `main()` is the composition root — adapter imports are **local** so the module's use-case logic
+    stays adapter-free (invariant #1); it seeds the real catalog on first run, builds the source
+    (with a `JsonFileCache` for live kinds), and calls the **guarded** `catch_up` (skip if today
+    already `ok` — never zero, never a duplicate, never a redundant Shopee hit). A failed run stays
+    transactional (SC6) and exits non-zero. Web startup also calls `catch_up` (three catch-up paths;
+    the guard makes them idempotent).
+  - **Scheduling assets shipped in `deploy/`** (not a code dep): launchd plist (`StartCalendarInterval`
+    06:00 + `RunAtLoad` catch-up) + cron (`0 6 * * *` + `@reboot`) + install README. A `plistlib`
+    test asserts the schedule + entrypoint so a broken plist fails CI.
+  - **The `id-android-market` skill was already built/installed in M2** — PLAN's "package the skill"
+    M6 item was satisfied early; nothing new needed here.
+  - **Deps:** added a `scrape` extra (`beautifulsoup4`); `dev` self-references `ampere[scrape]` so
+    tests get it. No lxml hard dep (parser prefers lxml if present, falls back to `html.parser`). No
+    Playwright (the robust Shopee transport is still a drop-in `fetch`, per M5).
+  - Not committed (awaiting user).
 - **M5 real Shopee sources done (2026-07-14):**
   - **Transport seam is the key decision.** The fragile/networked part of each source (Shopee's
     expiring anti-bot headers; affiliate auth) is injected as a `fetch(params)->dict` callable, so
@@ -296,12 +358,21 @@ Run the UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB o
       (no browser dep added now); `httpx` best-effort default meanwhile. Affiliate remains preferred.
 - [x] ~~Frontend lib: Plotly.js vs Chart.js~~ — **resolved:** design hand-rolls the scatter as inline
       SVG, **no chart lib**. M4 follows suit (FastAPI + vanilla JS + SVG).
-- [ ] Scheduler: cron→/run (default) vs in-process APScheduler?
-- [ ] Telegram daily push (Relay/Courier style) in M6, or defer to v2?
-- [ ] Confirm affiliate access (Involve Asia / Accesstrade) for Shopee ID feed. **Now blocks
-      validating `AffiliateFeedSource.parse_offer` against a real feed** — the schema is currently
-      assumed; capture one page (like the Shopee/GSMArena HARs) to confirm field names before live use.
-- [ ] Seed the initial `chipsets` + `devices` catalog — which ~30–50 models (and their SoCs) to prioritize?
+- [x] ~~Scheduler: cron→/run vs in-process APScheduler~~ — **resolved (M6):** neither — a headless
+      `ampere-run-daily` entrypoint driven by an **OS scheduler** (launchd plist + cron shipped in
+      `deploy/`), plus a guarded `catch_up()` on web startup / RunAtLoad / @reboot. Survives restarts,
+      no web server required, one code path with the UI's Run-now.
+- [ ] Telegram daily push (Relay/Courier style) — **deferred to v2** (not built in M6; the affiliate
+      `tracking_link` already makes the frontier shareable). Revisit if a push channel is wanted.
+- [ ] Confirm affiliate access (Involve Asia / Accesstrade) for Shopee ID feed. **Still blocks
+      validating `AffiliateFeedSource.parse_offer` against a real feed** — the schema is assumed;
+      capture one page (like the Shopee/GSMArena HARs) to confirm field names before live use.
+- [~] **Seed the real `chipsets` + `devices` catalog** — **partially done (M6):** `devices_seed.csv`
+      has 10 confident ID 1–2jt phones (factual device→chipset + brand-tier update years);
+      `chipsets_seed.csv` has 13 real GSMArena SoC benchmark rows. Remaining: run the first **live**
+      `refresh_catalog` (needs GSMArena network) to fill the ID-band SoC benchmarks + battery, and
+      expand `devices_seed.csv` toward ~30–50 as review pages are scraped. Which further models to
+      prioritize is still open. (default: grow it from the keyword's actual daily needs-mapping queue)
 
 ## Reference-bound tuning notes
 

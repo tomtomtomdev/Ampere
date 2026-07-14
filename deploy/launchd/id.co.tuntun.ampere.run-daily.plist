@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Ampere — automatic daily fetch (SPEC §8a, SC8). macOS launchd LaunchAgent.
+
+  Runs the SAME entrypoint the UI's "Run now" button calls, so there is one code path. Runs at
+  06:00 daily (StartCalendarInterval) AND once at load/login (RunAtLoad) — the latter is the
+  launch-time catch-up, so a Mac asleep at 06:00 still gets exactly one run for the date (runs are
+  idempotent per snapshot_date, so a double trigger is harmless — never zero, never a duplicate).
+
+  Install (replace the __PLACEHOLDERS__ first — see deploy/README.md):
+    cp id.co.tuntun.ampere.run-daily.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/id.co.tuntun.ampere.run-daily.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>id.co.tuntun.ampere.run-daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__VENV__/bin/ampere-run-daily</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>AMPERE_SOURCE</key>
+        <string>affiliate</string>
+        <key>AMPERE_DB</key>
+        <string>__AMPERE_HOME__/data/ampere.db</string>
+        <key>AMPERE_CACHE_DIR</key>
+        <string>__AMPERE_HOME__/data/cache</string>
+        <key>AMPERE_KEYWORD</key>
+        <string>android</string>
+        <key>AMPERE_PRICE_MIN</key>
+        <string>1000000</string>
+        <key>AMPERE_PRICE_MAX</key>
+        <string>2000000</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__AMPERE_HOME__/data/logs/run-daily.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__AMPERE_HOME__/data/logs/run-daily.err.log</string>
+</dict>
+</plist>
