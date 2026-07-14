@@ -4,17 +4,23 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M3 done — persistence + daily use-case implemented **test-first** and green (ruff clean
-+ 106 tests: +37 for M3 — 6 pricing, 5 dedup, 5 diff, 13 repos, 8 run_daily). SQLite repos +
-`SqliteUnitOfWork` are live behind the `ports`; `application/run_daily.py` wires the full pipeline
-idempotently + transactionally per `snapshot_date`. All three DoD scenarios pass (diff across two
-runs; re-run = identical scores + no dup rows; forced mid-run failure leaves the prior snapshot
-intact). `main()` stays an M6 stub (entrypoint/config wiring); `refresh_catalog` still stubbed.
-**Next action:** M4 (Web UI — FastAPI endpoints backed by the repos + static SPA, 5 screens; Pareto
-scatter as inline SVG; weight sliders live re-score). Read side is ready: `uow` repos expose
-`for_snapshot` / `latest_snapshot_before`; `RunResult` carries the `SnapshotDiff` for the Changes
-screen. Web layer stays thin — endpoints call repos/use-cases, no business logic (CLAUDE.md).
+**Phase:** M4 done — Web UI implemented **test-first** and green (ruff clean + 131 tests: +25 for
+M4 — 16 `test_views`, 9 `test_web`). FastAPI app (`web/api.py`, `create_app(uow_factory, …)`) is a
+thin skin over new read-model builders in `application/views.py`; scoring/dedup/frontier stay in the
+domain via the shared `application/snapshot.py:score_snapshot` (extracted from `run_daily`, so the
+persist path and the live-re-score read path can't diverge — SC3). All 5 screens render from the
+API and were **verified in a real browser** (headless Chrome screenshots): Pareto scatter (inline
+SVG, frontier highlighted / dominated greyed), sortable+filterable Listings, Catalog (chipset table
+w/ "used by", needs-mapping resolver `POST /api/catalog/map`), Watchlist diff, Settings (live weight
+slider re-scores via server round-trip; `POST /api/run` fallback). Demo data via
+`application/demo_seed.py` (2-day fixture bootstrap; on-disk `data/ampere.db`, gitignored).
+**Next action:** M5 (real Shopee source — `AffiliateFeedSource` preferred + `InternalEndpointSource`
+best-effort behind `SearchSource`; must flow through the exact M4 pipeline with zero scoring/UI
+changes, SC4). The web layer is already source-agnostic: `POST /api/run` calls `run_daily` with an
+injected `source_factory` (defaults to `FixtureSource`) — swapping the source is a one-line wiring
+change in the composition root.
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12). `uv pip install -e ".[dev,web]"`.
+Run the UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on first start).
 
 ## Milestone tracker
 
@@ -24,12 +30,49 @@ screen. Web layer stays thin — endpoints call repos/use-cases, no business log
 | M1 | Scoring core (pure)               | ✅ done  | normalize/perf/batt/cap/value + Pareto frontier; TDD, deterministic, ruff-clean |
 | M2 | Entity resolution                 | ✅ done  | clean_title + resolve; 100% on 21-title golden set (≥85% SC2); alias override + needs-mapping |
 | M3 | Persistence + daily use-case      | ✅ done  | SQLite repos + UoW; run_daily pipeline; idempotent+transactional (SC6); snapshot diff |
-| M4 | Web UI (5 menu screens)           | ☐ todo  | Pareto scatter; weight sliders live re-score |
+| M4 | Web UI (5 menu screens)           | ✅ done  | FastAPI + vanilla-JS SPA; inline-SVG scatter; sliders re-score server-side; browser-verified |
 | M5 | Real Shopee source                | ☐ todo  | affiliate feed preferred; internal best-effort |
 | M6 | Catalog refresh + schedule + skill| ☐ todo  | monthly scrapers; cron→/run; id-android-market |
 
 ## Decisions log
 
+- **M4 Web UI done (2026-07-14):**
+  - **Live re-score without divergence:** extracted the scoring+dedup+frontier pass out of
+    `run_daily` into `application/snapshot.py:score_snapshot(listings, uow, weights, *, blended)`
+    (returns `ScoredSnapshot`: `scores_by_id` / `sku_of` / `best_listings` / `rollups` /
+    `frontier_ids`). **Both** `run_daily` (persist path) and the read models call it, so the
+    dashboard at default weights reproduces exactly what was persisted (SC3, test-asserted).
+    `run_daily` refactor is behavior-preserving — the 8 M3 tests stayed green untouched.
+  - **Read models** (`application/views.py`): one `build_*` per screen returning pydantic DTOs.
+    They **recompute** from the stored snapshot + catalog at the request's weights (the
+    slider-re-score path) rather than reading persisted `Score` rows — deterministic + keeps the
+    persisted rows as the audit record. A single `_load_ctx` computes the scored set + diff once per
+    request; `_meta` builds the shared chrome (stats, nav badges). Unmatched listings never enter
+    the scored tables — they surface only in the Catalog needs-mapping queue (invariant #4).
+  - **Boundary decision — where the math stops:** the server returns domain numbers + frontier
+    membership; the **browser JS only does pixel geometry, client-side filter/sort, and the tooltip**
+    (no scoring in JS, unlike the `design/Ampere.dc.html` prototype which scored in-browser). Weight
+    + "blend conditions" are server params (re-fetch → re-score); brand/cond/conf/mall-only/
+    frontier-only/sort are pure client-side view filters (no round-trip). Frontier membership is
+    computed over the full deduped in-band set, so client filters never change it.
+  - **FastAPI wiring** (`web/api.py`): `create_app(uow_factory, source_factory=FixtureSource,
+    clock=date.today, on_startup=None)` — composition root injects a **per-request UoW** (fresh
+    SQLite conn, `check_same_thread=False`, closed in a `finally`) so it's thread-safe under the
+    Starlette threadpool and fully testable with a temp DB. `Depends()` stays in the **default
+    value** not an `Annotated` marker (with `from __future__ import annotations`, FastAPI evals
+    annotations against module globals where the `get_uow` closure is invisible → 422); B008 is
+    silenced via `ruff … flake8-bugbear.extend-immutable-calls=["fastapi.Depends"]`.
+  - **Endpoints:** `GET /api/{dashboard,listings,catalog,changes,settings}` (read),
+    `POST /api/run` (manual fallback — SPEC §8/§8a, daily fetch is automatic), `POST /api/catalog/map`
+    (needs-mapping resolver → `aliases.remember(alias_key(title), device_id)`; added public
+    `resolve.alias_key` so the alias is stored under the exact key `resolve` looks it up by).
+    Demo bootstrap runs only on real startup via a lifespan hook (no import-time / test side effects).
+  - **Frontend** is the `design/Ampere.dc.html` prototype ported to fetch-based vanilla JS + the
+    ported design tokens in `styles.css`; hash-based deep-linking (`#listings` etc., refresh-safe).
+    Stack confirmed: FastAPI + vanilla JS + hand-rolled inline SVG, **no chart lib, no build step**.
+  - **`trust_score` stays deferred** (open question) — M4 shows seller rating/Mall/Star as
+    filters + columns only, off `capability` (§5.6). No composition formula fabricated.
+  - Not committed (awaiting user).
 - **M3 persistence + daily use-case done (2026-07-13):**
   - **New pure-domain modules** (test-first, zero I/O): `domain/pricing.py` (`effective_price` §5.7
     + `price_confidence`), `domain/dedup.py` (`dedup_cheapest_per_sku` §5.8), `domain/diff.py`

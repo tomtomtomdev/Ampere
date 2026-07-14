@@ -15,11 +15,17 @@ SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[3] / "data" / "ampere.db"
 
 
-def connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    """Open a connection with FK enforcement and ``Row`` access."""
+def connect(
+    db_path: str | Path = DEFAULT_DB_PATH, *, check_same_thread: bool = True
+) -> sqlite3.Connection:
+    """Open a connection with FK enforcement and ``Row`` access.
+
+    ``check_same_thread=False`` is used by the web app, which opens a fresh connection per request
+    that may be handled on a different thread pool worker than the one that created it.
+    """
     if db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

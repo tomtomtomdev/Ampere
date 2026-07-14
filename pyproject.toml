@@ -44,6 +44,10 @@ src = ["ampere", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI idiom: dependency/params declared as call defaults (Depends(...)) — not a B008 bug.
+extend-immutable-calls = ["fastapi.Depends"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

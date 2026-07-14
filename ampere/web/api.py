@@ -1,52 +1,214 @@
-"""FastAPI app — thin transport over use-cases/repos (PLAN M4).
+"""FastAPI app — thin transport over the read-model builders + ``run_daily`` (PLAN M4).
 
-M0: serves the static shell + design system so the UI foundation runs; the data endpoints are
-declared but return 501 until M4 wires them to the repos. Business math never lives here.
+No business logic here (CLAUDE.md): each endpoint resolves the current snapshot, builds the request
+params, and hands off to ``ampere.application.views`` / ``run_daily``. Scoring, dedup, and the
+Pareto frontier live in the domain layer and are recomputed server-side, so weight sliders re-score
+live without any math leaking into the browser.
+
+The app is built by ``create_app`` around an injected ``uow_factory`` (composition root wires
+SQLite) — this keeps the transport testable with a temp DB and swappable per SPEC's Clean layering.
 
 Run:  uvicorn ampere.web.api:app --reload   (needs the ``web`` extra installed)
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from ampere.adapters.repos import db
+from ampere.adapters.repos.sqlite_repos import SqliteUnitOfWork
+from ampere.adapters.sources.fixture_source import FixtureSource
+from ampere.application import views
+from ampere.application.demo_seed import bootstrap
+from ampere.application.run_daily import run_daily
+from ampere.application.views import ViewParams
+from ampere.config import DEFAULT_KEYWORD, DEFAULT_PRICE_MAX, DEFAULT_PRICE_MIN
+from ampere.domain.models import RunResult, Weights
+from ampere.domain.resolve import alias_key
+from ampere.ports.repositories import UnitOfWork
+from ampere.ports.search_source import SearchSource
 
 STATIC_DIR = Path(__file__).with_name("static")
 
-app = FastAPI(title="Ampere", version="0.1.0")
+
+class RunRequest(BaseModel):
+    """Optional overrides for the manual fallback run (SPEC §8/§8a — daily fetch is automatic)."""
+
+    keyword: str = DEFAULT_KEYWORD
+    price_min: int = DEFAULT_PRICE_MIN
+    price_max: int = DEFAULT_PRICE_MAX
+    w_perf: float | None = None
+    mall_only: bool = False
 
 
-def _not_yet(screen: str) -> dict:
-    # Declared surface for the five screens; implemented in M4 against the repos.
-    raise HTTPException(status_code=501, detail=f"{screen}: implemented in M4")
+class MapRequest(BaseModel):
+    """Resolve a needs-mapping listing by learning an alias -> device_id (SPEC §7 step 5a)."""
+
+    title: str
+    device_id: str
 
 
-@app.get("/api/dashboard")
-def dashboard() -> dict:
-    return _not_yet("dashboard")
+def _weights(w_perf: float | None) -> Weights:
+    return Weights(w_perf=w_perf) if w_perf is not None else Weights()
 
 
-@app.get("/api/listings")
-def listings() -> dict:
-    return _not_yet("listings")
+def _params(
+    *,
+    w_perf: float | None,
+    blended: bool,
+    mall_only: bool,
+    keyword: str,
+    price_min: int,
+    price_max: int,
+    source_kind: str,
+) -> ViewParams:
+    return ViewParams(
+        weights=_weights(w_perf), blended=blended, mall_only=mall_only,
+        keyword=keyword, price_min=price_min, price_max=price_max, source_kind=source_kind,
+    )
 
 
-@app.get("/api/catalog")
-def catalog() -> dict:
-    return _not_yet("catalog")
+def create_app(
+    *,
+    uow_factory: Callable[[], UnitOfWork],
+    source_factory: Callable[[], SearchSource] = FixtureSource,
+    clock: Callable[[], date] = date.today,
+    on_startup: Callable[[], None] | None = None,
+) -> FastAPI:
+    """Build the app. ``uow_factory`` returns a fresh UoW per request (composition root wires it).
+
+    ``on_startup`` (optional) runs once when the app begins serving — the default app uses it to
+    seed the demo DB. Tests omit it (no import-time or startup side effects on the real DB).
+    """
+    lifespan = None
+    if on_startup is not None:
+
+        @asynccontextmanager
+        async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+            on_startup()
+            yield
+
+    app = FastAPI(title="Ampere", version="0.1.0", lifespan=lifespan)
+
+    def get_uow() -> Iterator[UnitOfWork]:
+        uow = uow_factory()
+        try:
+            yield uow
+        finally:
+            close = getattr(uow, "close", None)
+            if close is not None:
+                close()
+
+    # ``Depends`` lives in the default (not an ``Annotated`` marker): with ``from __future__ import
+    # annotations`` FastAPI evaluates annotations against module globals, where the ``get_uow``
+    # closure is invisible — the default value is a real object, so it resolves correctly.
+    @app.get("/api/dashboard")
+    def dashboard(
+        uow: UnitOfWork = Depends(get_uow),
+        w_perf: float | None = None,
+        blended: bool = False,
+        mall_only: bool = False,
+        keyword: str = DEFAULT_KEYWORD,
+        price_min: int = DEFAULT_PRICE_MIN,
+        price_max: int = DEFAULT_PRICE_MAX,
+    ) -> views.DashboardView:
+        params = _params(
+            w_perf=w_perf, blended=blended, mall_only=mall_only, keyword=keyword,
+            price_min=price_min, price_max=price_max, source_kind=source_factory().kind,
+        )
+        return views.build_dashboard(uow, views.current_snapshot(uow), params)
+
+    @app.get("/api/listings")
+    def listings(
+        uow: UnitOfWork = Depends(get_uow),
+        w_perf: float | None = None,
+        blended: bool = False,
+        mall_only: bool = False,
+        keyword: str = DEFAULT_KEYWORD,
+        price_min: int = DEFAULT_PRICE_MIN,
+        price_max: int = DEFAULT_PRICE_MAX,
+    ) -> views.ListingsView:
+        params = _params(
+            w_perf=w_perf, blended=blended, mall_only=mall_only, keyword=keyword,
+            price_min=price_min, price_max=price_max, source_kind=source_factory().kind,
+        )
+        return views.build_listings(uow, views.current_snapshot(uow), params)
+
+    @app.get("/api/catalog")
+    def catalog(uow: UnitOfWork = Depends(get_uow)) -> views.CatalogView:
+        return views.build_catalog(uow, views.current_snapshot(uow))
+
+    @app.get("/api/changes")
+    def changes(
+        uow: UnitOfWork = Depends(get_uow),
+        w_perf: float | None = None,
+        blended: bool = False,
+    ) -> views.ChangesView:
+        params = _params(
+            w_perf=w_perf, blended=blended, mall_only=False, keyword=DEFAULT_KEYWORD,
+            price_min=DEFAULT_PRICE_MIN, price_max=DEFAULT_PRICE_MAX,
+            source_kind=source_factory().kind,
+        )
+        return views.build_changes(uow, views.current_snapshot(uow), params)
+
+    @app.get("/api/settings")
+    def settings(
+        uow: UnitOfWork = Depends(get_uow),
+        w_perf: float | None = None,
+        mall_only: bool = False,
+        blended: bool = False,
+    ) -> views.SettingsView:
+        params = _params(
+            w_perf=w_perf, blended=blended, mall_only=mall_only, keyword=DEFAULT_KEYWORD,
+            price_min=DEFAULT_PRICE_MIN, price_max=DEFAULT_PRICE_MAX,
+            source_kind=source_factory().kind,
+        )
+        return views.build_settings(uow, views.current_snapshot(uow), params)
+
+    @app.post("/api/run")
+    def run(body: RunRequest | None = None, uow: UnitOfWork = Depends(get_uow)) -> RunResult:
+        req = body or RunRequest()
+        return run_daily(
+            source=source_factory(), uow=uow, snapshot_date=clock(),
+            keyword=req.keyword, price_min=req.price_min, price_max=req.price_max,
+            mall_only=req.mall_only, weights=_weights(req.w_perf),
+        )
+
+    @app.post("/api/catalog/map")
+    def catalog_map(body: MapRequest, uow: UnitOfWork = Depends(get_uow)) -> dict[str, str]:
+        uow.aliases.remember(alias_key(body.title), body.device_id)
+        return {"ok": "true", "key": alias_key(body.title), "device_id": body.device_id}
+
+    # Static SPA shell last, mounted at root so /api/* wins.
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    return app
 
 
-@app.get("/api/changes")
-def changes() -> dict:
-    return _not_yet("changes")
+def _default_uow_factory() -> UnitOfWork:
+    conn = db.connect(check_same_thread=False)
+    db.create_schema(conn)
+    return SqliteUnitOfWork(conn)
 
 
-@app.get("/api/settings")
-def settings() -> dict:
-    return _not_yet("settings")
+def _bootstrap_default_db() -> None:
+    """Seed the on-disk DB with the demo catalog + a fixture snapshot if it has never run.
+
+    Dev convenience so ``uvicorn ampere.web.api:app`` shows data immediately (M4). The real catalog
+    + automatic daily scheduler are M6; here we only seed when there is no successful run yet.
+    """
+    uow = _default_uow_factory()
+    try:
+        if uow.runs.last_successful() is None:
+            bootstrap(uow, today=date.today())
+    finally:
+        uow.close()  # type: ignore[attr-defined]
 
 
-# Static SPA shell last, mounted at root so /api/* wins.
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+app = create_app(uow_factory=_default_uow_factory, on_startup=_bootstrap_default_db)

@@ -10,11 +10,10 @@
 </head>
 <body>
   <!--
-    Ampere app shell — the design system + chrome from design/README.md, applied.
-    This is the M4 STARTING POINT: layout, tokens, and navigation only. The five screens
-    (Dashboard / Listings / Catalog / Watchlist / Settings) are rendered from the API in M4 —
-    scoring/dedup/frontier stay in the Python domain layer (never re-implemented in JS).
-    Full interactive reference: design/Ampere.dc.html.
+    Ampere app shell (M4). The five screens render from the FastAPI backend (/api/*); scoring,
+    dedup, and the Pareto frontier live in the Python domain layer and are NEVER re-implemented
+    here — JS only does pixel geometry, client-side filtering, and sorting.
+    Design of record: design/Ampere.dc.html.
   -->
   <div class="app">
     <aside class="sidebar">
@@ -28,25 +27,25 @@
 
       <nav class="nav" id="nav">
         <button class="nav-item active" data-screen="dashboard">
-          <span class="bar"></span><span class="label">Dashboard</span><span class="badge"></span>
+          <span class="bar"></span><span class="label">Dashboard</span><span class="badge" data-badge="dashboard"></span>
         </button>
         <button class="nav-item" data-screen="listings">
-          <span class="bar"></span><span class="label">Listings</span><span class="badge">—</span>
+          <span class="bar"></span><span class="label">Listings</span><span class="badge" data-badge="listings">—</span>
         </button>
         <button class="nav-item" data-screen="catalog">
-          <span class="bar"></span><span class="label">Catalog</span><span class="badge">—</span>
+          <span class="bar"></span><span class="label">Catalog</span><span class="badge" data-badge="catalog">—</span>
         </button>
         <button class="nav-item" data-screen="changes">
-          <span class="bar"></span><span class="label">Watchlist</span><span class="badge">—</span>
+          <span class="bar"></span><span class="label">Watchlist</span><span class="badge" data-badge="changes">—</span>
         </button>
         <button class="nav-item" data-screen="settings">
-          <span class="bar"></span><span class="label">Settings</span><span class="badge"></span>
+          <span class="bar"></span><span class="label">Settings</span><span class="badge" data-badge="settings"></span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
-        snapshot —<br />
-        scoring v2.1.0<br />
+        snapshot <span id="foot-snapshot">—</span><br />
+        scoring <span id="foot-version">v2.1.0</span><br />
         frontier per-condition
       </div>
     </aside>
@@ -54,30 +53,21 @@
     <div class="main">
       <header class="topbar">
         <div class="chips">
-          <span class="chip">keyword: <span class="accent">android</span></span>
-          <span class="chip">band: 1.00jt–2.00jt</span>
+          <span class="chip">keyword: <span class="accent" id="chip-keyword">—</span></span>
+          <span class="chip" id="chip-band">band: —</span>
           <span class="chip">Shopee.co.id</span>
         </div>
         <div class="stats">
-          <span>raw —</span>
-          <span>deduped —</span>
-          <span class="accent">matched —%</span>
-          <span>last run 06:00 WIB</span>
-          <!-- No manual run button — the daily job is unattended (SPEC §4/§8a). -->
-          <span class="schedule-pill"><span class="schedule-dot"></span>AUTO · next run —</span>
+          <span>raw <span id="stat-raw">—</span></span>
+          <span>deduped <span id="stat-deduped">—</span></span>
+          <span class="accent">matched <span id="stat-matched">—</span>%</span>
+          <span class="schedule-pill" title="Scheduled daily — no manual trigger">
+            <span class="schedule-dot"></span>AUTO · <span id="stat-schedule">daily 06:00 WIB</span>
+          </span>
         </div>
       </header>
 
-      <main class="content" id="content">
-        <h1 id="screen-title">Pareto frontier — capability vs effective price</h1>
-        <div class="scaffold-note">
-          <strong>Scaffold shell (M0).</strong> The design system + navigation are in place. The five
-          screens are wired to the FastAPI backend in <code>M4</code>; scoring, dedup, and the Pareto
-          frontier live in the Python <code>domain</code> layer (M1) and are never re-implemented here.
-          <br /><br />
-          Full interactive design reference: <code>design/Ampere.dc.html</code>.
-        </div>
-      </main>
+      <main class="content" id="content"></main>
     </div>
   </div>
 

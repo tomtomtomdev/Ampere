@@ -59,6 +59,15 @@ def _normalize_ws(s: str) -> str:
     return " ".join(s.lower().split())
 
 
+def alias_key(title: str) -> str:
+    """The normalization key an alias is stored/looked up under (SPEC §7 step 5a).
+
+    Public so the ``application`` layer (e.g. the Catalog "needs mapping" resolver) records an alias
+    under the exact key ``resolve`` will later look it up by — one source of truth for the key.
+    """
+    return _normalize_ws(title)
+
+
 def _dedup_tokens(s: str) -> str:
     """Order-preserving unique tokens. Neutralizes brand-repeat artifacts ("realme realme C67",
     or a query that prepends a brand the catalog model already carries) before fuzzy scoring —
@@ -174,7 +183,7 @@ def resolve(
     cleaned = clean_title(title)
 
     # Step 5a: a learned raw-pattern override closes the long tail — trust it over fuzzy matching.
-    alias_hit = aliases.lookup(_normalize_ws(title))
+    alias_hit = aliases.lookup(alias_key(title))
     if alias_hit is not None:
         return ResolutionResult(device_id=alias_hit, cleaned=cleaned, match_score=100.0)
 

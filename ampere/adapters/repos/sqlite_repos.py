@@ -332,6 +332,10 @@ class SqliteUnitOfWork:
         self.sku_rollup = SqliteSkuRollupRepo(conn)
         self.runs = SqliteRunRepo(conn)
 
+    def close(self) -> None:
+        """Close the backing connection. Used by the web app's per-request UoW teardown."""
+        self._conn.close()
+
     @contextmanager
     def transaction(self) -> Iterator[None]:
         self._conn.execute("BEGIN")
