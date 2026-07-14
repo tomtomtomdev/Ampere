@@ -4,21 +4,25 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M4 done — Web UI implemented **test-first** and green (ruff clean + 131 tests: +25 for
-M4 — 16 `test_views`, 9 `test_web`). FastAPI app (`web/api.py`, `create_app(uow_factory, …)`) is a
-thin skin over new read-model builders in `application/views.py`; scoring/dedup/frontier stay in the
-domain via the shared `application/snapshot.py:score_snapshot` (extracted from `run_daily`, so the
-persist path and the live-re-score read path can't diverge — SC3). All 5 screens render from the
-API and were **verified in a real browser** (headless Chrome screenshots): Pareto scatter (inline
-SVG, frontier highlighted / dominated greyed), sortable+filterable Listings, Catalog (chipset table
-w/ "used by", needs-mapping resolver `POST /api/catalog/map`), Watchlist diff, Settings (live weight
-slider re-scores via server round-trip; `POST /api/run` fallback). Demo data via
-`application/demo_seed.py` (2-day fixture bootstrap; on-disk `data/ampere.db`, gitignored).
-**Next action:** M5 (real Shopee source — `AffiliateFeedSource` preferred + `InternalEndpointSource`
-best-effort behind `SearchSource`; must flow through the exact M4 pipeline with zero scoring/UI
-changes, SC4). The web layer is already source-agnostic: `POST /api/run` calls `run_daily` with an
-injected `source_factory` (defaults to `FixtureSource`) — swapping the source is a one-line wiring
-change in the composition root.
+**Phase:** M5 done — real Shopee sources implemented **test-first** and green (ruff clean + 192
+tests: +61 for M5 — 32 `test_internal_endpoint`, 21 `test_affiliate_feed`, 8 `test_source_contract`).
+Two live `SearchSource` impls behind the port, each with the **live transport injected** as a
+`fetch` callable so all parsing/pagination/filtering is unit-tested offline (no network in CI):
+`InternalEndpointSource` (HAR-verified `search_items` — `fe_filter_options` Mall + price `▶◀` band,
+micro-unit `÷100000`, `item_basic` field map, harga-coret dropped) and `AffiliateFeedSource` (ToS-
+safe/preferred but narrower — clean price + affiliate `tracking_link`, no fabricated Mall/trust).
+Shared `_common.py` gives caching (`InMemoryCache`/`JsonFileCache`), bounded `fetch_with_backoff`,
+and one `SourceFetchError`. New `sources.build_source(kind)` registry is the composition-root
+selector. **SC4 verified end-to-end** (scratch check): an `InternalEndpointSource` with a fake
+transport drove the **unmodified** `run_daily` — payload → ÷100000 price → resolve → Mall→new →
+`full` score → frontier — zero scoring/UI changes.
+**Next action:** M6 (catalog refresh + scheduling + skill) — GSMArena-first monthly scrapers
+(`gsmarena_perf_parser.py` is ready in the skill), seed the real `chipsets`/`devices` catalog,
+`os/security_updates_years`, and the launchd/cron automatic daily scheduler + launch-time catch-up
+(SC8). `run_daily.main()` is still the `NotImplementedError("M6: wire config + adapters")` stub —
+M6 wires `build_source` + config + a `JsonFileCache` there. To point the web/daily job at a live
+source today it's a one-liner: `source_factory=lambda: build_source("affiliate")` (default stays
+`FixtureSource` so the demo runs offline).
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12). `uv pip install -e ".[dev,web]"`.
 Run the UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on first start).
 
@@ -31,11 +35,48 @@ Run the UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB o
 | M2 | Entity resolution                 | ✅ done  | clean_title + resolve; 100% on 21-title golden set (≥85% SC2); alias override + needs-mapping |
 | M3 | Persistence + daily use-case      | ✅ done  | SQLite repos + UoW; run_daily pipeline; idempotent+transactional (SC6); snapshot diff |
 | M4 | Web UI (5 menu screens)           | ✅ done  | FastAPI + vanilla-JS SPA; inline-SVG scatter; sliders re-score server-side; browser-verified |
-| M5 | Real Shopee source                | ☐ todo  | affiliate feed preferred; internal best-effort |
+| M5 | Real Shopee source                | ✅ done  | InternalEndpointSource (HAR contract) + AffiliateFeedSource behind injected transport; shared contract suite; SC4 verified |
 | M6 | Catalog refresh + schedule + skill| ☐ todo  | monthly scrapers; cron→/run; id-android-market |
 
 ## Decisions log
 
+- **M5 real Shopee sources done (2026-07-14):**
+  - **Transport seam is the key decision.** The fragile/networked part of each source (Shopee's
+    expiring anti-bot headers; affiliate auth) is injected as a `fetch(params)->dict` callable, so
+    **all parsing/pagination/filtering/dedup/cache/backoff logic is pure and unit-tested offline**
+    against saved-shape payloads — never touching Shopee (skill guidance, invariant #2). Live
+    fetchers (`_HttpxPageFetcher`/`_HttpxFeedFetcher`) are best-effort defaults, **not exercised in
+    tests** (no network in CI).
+  - **`InternalEndpointSource`** (`kind="internal"`) = the HAR-verified `search_items` contract
+    (SPEC Appendix A): `fe_filter_options` builds `SHOP_TYPE=OFFICIAL_MALL` (only when `mall_only`)
+    + `PRICE_RANGE` with the literal `▶◀` delimiter in whole IDR; `newest` is an **offset** cursor
+    (`limit=60`); pagination stops on `nomore` / `offset>=total_count` / empty / `max_pages` cap
+    (one bounded burst). Pure `parse_item`: price `÷100000`, **`price_before_discount` never read**
+    (harga coret, §5.7), `tier_variations` → normalized RAM/ROM across axis-name/format variants
+    (color axes ignored), `is_official_shop|show_official_shop_label`→`is_mall`,
+    `item_rating.rating_star`/`rating_count[0]`/`is_preferred_plus_seller`→trust, URL from
+    `shopid`/`itemid`. Client-side band re-filter is **defensive** (variant price ranges can leak
+    out of band). Dedup by `shopee_id` (first wins).
+  - **`AffiliateFeedSource`** (`kind="affiliate"`) = the **preferred, ToS-safe** path (SPEC §6) and
+    the monetization channel (`tracking_link` = outbound affiliate URL, §11.2). Deliberately
+    **narrower**: whole-IDR price (NOT micro-units), prefers `sale_price` over list, brand — but
+    **no Mall/trust** (left unset, never fabricated — invariant #4). `mall_only` is a documented
+    no-op. **Schema is *assumed*** (`{data:{data:[...],current_page,last_page}}`) since affiliate
+    access is still an open question; the whole mapping is isolated in `parse_offer` = the one place
+    to adjust once a real feed is captured.
+  - **Shared infra** (`adapters/sources/_common.py`): `Cache` Protocol + `InMemoryCache` (default)
+    + `JsonFileCache` (on-disk "cache hard", SPEC §6); `fetch_with_backoff` (exp backoff on
+    `SourceFetchError`, **injected `sleep`** so tests don't wait; non-`SourceFetchError` propagates
+    as a bug); `logging` provenance (source_kind, band, pages, raw/in-band counts).
+  - **`build_source(kind, **kw)` registry** in `sources/__init__.py` = the composition-root source
+    selector (SPEC §8 "source selection", SC4). Web default stays `FixtureSource` (offline demo
+    intact); swapping is one line. **`run_daily`/scoring/UI unchanged** — proven by the SC4 scratch
+    check (internal source → run_daily end-to-end).
+  - **No Playwright dependency added.** The robust internal transport (logged-in Playwright session
+    per Appendix A) is a drop-in `fetch` impl later; adding the browser dep now is unjustified while
+    the seam already isolates it. `httpx` (existing dep) backs the best-effort default, imported
+    lazily inside the fetchers.
+  - Not committed (awaiting user).
 - **M4 Web UI done (2026-07-14):**
   - **Live re-score without divergence:** extracted the scoring+dedup+frontier pass out of
     `run_daily` into `application/snapshot.py:score_snapshot(listings, uow, weights, *, blended)`
@@ -250,13 +291,16 @@ Run the UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB o
       legacy can stay unsupported? (default: stay v2-only until a real legacy device appears)
 - [x] ~~Shopee Mall/condition detection~~ — **resolved from HAR** (Appendix A).
 - [x] ~~Scheduler: cron vs APScheduler~~ — **decided:** OS scheduler (launchd/cron) + catch-up, automatic daily.
-- [ ] `InternalEndpointSource`: Playwright-driven browser session (robust, recommended) vs
-      affiliate-feed-only for v1? (default: build affiliate first, Playwright source in M5)
+- [x] ~~`InternalEndpointSource`: Playwright vs affiliate-feed-only for v1~~ — **resolved (M5):**
+      built BOTH behind an injected `fetch` transport seam. Playwright is a drop-in `fetch` impl
+      (no browser dep added now); `httpx` best-effort default meanwhile. Affiliate remains preferred.
 - [x] ~~Frontend lib: Plotly.js vs Chart.js~~ — **resolved:** design hand-rolls the scatter as inline
       SVG, **no chart lib**. M4 follows suit (FastAPI + vanilla JS + SVG).
 - [ ] Scheduler: cron→/run (default) vs in-process APScheduler?
 - [ ] Telegram daily push (Relay/Courier style) in M6, or defer to v2?
-- [ ] Confirm affiliate access (Involve Asia / Accesstrade) for Shopee ID feed.
+- [ ] Confirm affiliate access (Involve Asia / Accesstrade) for Shopee ID feed. **Now blocks
+      validating `AffiliateFeedSource.parse_offer` against a real feed** — the schema is currently
+      assumed; capture one page (like the Shopee/GSMArena HARs) to confirm field names before live use.
 - [ ] Seed the initial `chipsets` + `devices` catalog — which ~30–50 models (and their SoCs) to prioritize?
 
 ## Reference-bound tuning notes
