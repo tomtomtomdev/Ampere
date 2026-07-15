@@ -49,9 +49,20 @@ DEFAULT_PRICE_MIN = 1_000_000
 DEFAULT_PRICE_MAX = 2_000_000
 
 # Optional bonuses/penalties — OFF by default so the core score stays benchmark-pure
-# (SPEC §11.1 longevity bonus, §5.6 trust penalty).
+# (SPEC §11.1 longevity bonus, §5.6 trust penalty). Both are UI-tunable per request (like weights):
+# defaults-off means the persisted scores are unchanged, so SCORING_VERSION stays v2.1.0 (SC3).
 LONGEVITY_BONUS_ENABLED = False
 LONGEVITY_OS_YEARS_BOUND = Bound(0, 5)
+LONGEVITY_BONUS_MAX = 5.0  # max capability points added at full OS-update-years support (§11.1)
 TRUST_PENALTY_ENABLED = False
 TRUST_PENALTY_FACTOR = 0.85  # applied to value when !is_mall and seller_rating < 4.5
 TRUST_PENALTY_RATING_THRESHOLD = 4.5
+
+# Trust-score composition (SPEC §5.6) — a 0–100 seller-trust column + filter, NOT part of
+# capability. v1 heuristic; weights are data (tunable). Only affirmatively-present signals count
+# (a missing rating / not-Mall / non-Star is dropped, never scored as a fabricated 0 — invariant
+# #4); the present components' weights renormalize to sum 1. None when there is no signal at all.
+TRUST_WEIGHTS: dict[str, float] = {"rating": 0.5, "reviews": 0.2, "mall": 0.2, "star": 0.1}
+TRUST_RATING_BOUND = Bound(4.0, 5.0)  # ID ratings cluster 4.5–5.0; <4.0 reads as a red flag
+# log10(review_count+1): 0 → ~10k reviews = full confidence.
+TRUST_REVIEWS_LOG_BOUND = Bound(0.0, 4.0)

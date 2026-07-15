@@ -4,8 +4,24 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M6 done — catalog refresh + automatic scheduling, all **test-first** and green (ruff
-clean + 242 tests: +50 for M6 — 11 `test_gsmarena_perf`, 8 `test_gsmarena_battery`, 7
+**Phase:** M7 (v2 backlog) done — seller-trust composition (§5.6) + software-update longevity
+bonus (§11.1), **test-first** and green (ruff clean + **271 tests**: +29 for M7 — 5
+`test_longevity`, 11 `test_trust`, 11 `test_snapshot` [longevity/trust-penalty wiring], +1
+`test_run_daily` trust-score, +1 `test_web` bonus-toggles group). Three pure domain fns —
+`domain/longevity.py:longevity_bonus` (OS-years → up-to-`LONGEVITY_BONUS_MAX` additive capability
+points, unknown→0, clamped) and `domain/trust.py:{trust_score,trust_value_factor}` (0–100 seller
+composite re-weighted over affirmatively-present signals; soft `value` penalty for low-trust
+non-Mall) — are now **wired end-to-end behind off-by-default toggles**: `score_listing`/
+`score_snapshot` gained `longevity_enabled`/`trust_penalty_enabled` kwargs defaulting to the config
+flags (both OFF), so `run_daily` persists **unchanged** scores and `SCORING_VERSION` stays v2.1.0
+(SC3). The longevity bonus enters `capability` (so it also moves the value axis + frontier); the
+trust penalty multiplies `value` only. `trust_score` is computed once in `_build_listing`
+(weight-independent) and persisted (column already round-tripped). Web: `ViewParams` +
+`?longevity=`/`?trust_penalty=` query params on dashboard/listings/changes/settings re-score live;
+Settings reports the per-request state; `ListingRow` carries `trust_score`; the two Settings toggles
+are now interactive (mirror the dashboard `blended` toggle → `serverParams()` → re-fetch).
+Un-committed. **Prior:** M6 done — catalog refresh + automatic scheduling, all **test-first** and
+green (ruff clean + 242 tests: +50 for M6 — 11 `test_gsmarena_perf`, 8 `test_gsmarena_battery`, 7
 `test_refresh_catalog`, 8 `test_catalog_seed`, 8 `test_scheduler`, 8 `test_deploy_assets`).
 GSMArena scrapers now live in `adapters/scrapers/` behind an injected `fetch(url)->html` transport
 (all parsing/rollup pure + offline-tested; the `httpx` fetchers are best-effort, untested — the M5
@@ -25,8 +41,10 @@ cron + `@reboot`; install README) with a `plistlib` validity test.
 (exactly one `runs` row, SC8); a `refresh_catalog` filling the ID-band SoCs then makes the same
 unmodified fixture run **score 6 listings + a 3-point Pareto frontier** — the monthly-refresh →
 daily-score loop closes (SC7 + SC4).
-**Next action:** commit M6 (awaiting user). Then the v2 backlog (see open questions): capture a real
-affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the first **live** GSMArena
+**Next action:** M7 committed. One unautomated step remains: click-through the two new Settings
+toggles in a real browser (the JS mirrors the tested `blended` toggle + was syntax-checked, but the
+browser event chain itself has no test). Then the remaining v2 backlog (see open questions): capture
+a real affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the first **live** GSMArena
 `refresh_catalog` and expand the device seed; optional Telegram daily push.
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12).
 `uv pip install --python .venv -e ".[dev,web]"` (the `dev` extra self-references `ampere[scrape]` =
@@ -45,9 +63,44 @@ affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the first **liv
 | M4 | Web UI (5 menu screens)           | ✅ done  | FastAPI + vanilla-JS SPA; inline-SVG scatter; sliders re-score server-side; browser-verified |
 | M5 | Real Shopee source                | ✅ done  | InternalEndpointSource (HAR contract) + AffiliateFeedSource behind injected transport; shared contract suite; SC4 verified |
 | M6 | Catalog refresh + schedule + skill| ✅ done  | GSMArena perf+battery scrapers (injected transport) + refresh_catalog + real seed loader + `main()`/catch-up (SC8) + launchd/cron assets; skill was M2 |
+| M7 | Trust composition + longevity bonus| ✅ done  | v2 backlog: `trust_score`/`trust_value_factor` (§5.6) + `longevity_bonus` (§11.1), pure + wired behind off-by-default per-request toggles; persisted scores/version unchanged (SC3); TDD |
 
 ## Decisions log
 
+- **M7 trust composition + longevity bonus done (2026-07-15):**
+  - **Off-by-default is the load-bearing invariant.** Both effects ship as per-request toggles that
+    default to the config flags (`LONGEVITY_BONUS_ENABLED`/`TRUST_PENALTY_ENABLED`, both `False`).
+    `score_listing`/`score_snapshot` gained `longevity_enabled`/`trust_penalty_enabled` kwargs with
+    those defaults, so `run_daily` (which passes neither) persists byte-identical scores and
+    `SCORING_VERSION` stays **v2.1.0** — SC3 holds without a version bump. Asserted by
+    `test_snapshot.py::TestDefaultsUnchanged` (defaults == explicit both-off).
+  - **Longevity → capability, trust penalty → value.** Per §11.1 the longevity bonus is *added to*
+    `capability` (so it also moves the value axis and the frontier — the frontier's y-axis is
+    capability); per §5.6 the trust penalty *multiplies* `value` only (never capability). Both live
+    in the one place capability/value are computed (`score_listing`), reached from the read models
+    via the same `score_snapshot` — so the slider-re-score path applies them without a second math
+    site (no divergence, like weights).
+  - **`longevity_bonus`** (`domain/longevity.py`): `LONGEVITY_BONUS_MAX` (5.0) × `normalize(years,
+    0..LONGEVITY_OS_YEARS_BOUND)/100`; `None`→0.0 (never fabricated — invariant #4), clamped above
+    the window (a 7-yr pledge doesn't out-score the 5-yr top). Reuses `scoring.normalize`.
+  - **`trust_score`/`trust_value_factor`** (`domain/trust.py`): 0–100 composite over rating (norm
+    4.0–5.0) / log10(reviews+1) (0–4) / Mall / Star, **re-weighted over affirmatively-present
+    signals** (a missing rating or non-Mall/non-Star is *dropped*, not scored 0 — invariant #4);
+    `None` only when there is no signal at all; Mall alone reads as trustworthy. `trust_value_factor`
+    = `TRUST_PENALTY_FACTOR` (0.85) only when `!is_mall AND rating known AND < 4.5` (a missing rating
+    never invents risk), else 1.0. Weights/bounds are versioned data in `ampere.config`.
+  - **`trust_score` is a seller property, not a score.** Computed **once** in `run_daily._build_listing`
+    (weight-independent) and persisted — the `listings.trust_score` column + repo round-trip already
+    existed (added in M3, left `None`); this just fills it. Surfaced as `ListingRow.trust_score`; the
+    read models don't recompute it. (Resolves the M3 "trust_score composition" open question.)
+  - **Web:** `ViewParams` + `?longevity=`/`?trust_penalty=` query params (default = config) on the
+    four re-scoring endpoints; `build_settings` now reports the **per-request** flags (was the raw
+    config const). Frontend: `state.longevity`/`state.trust_penalty` + `serverParams()` carry them
+    to every screen; the two Settings toggles became interactive (id + onchange → `load("settings")`),
+    mirroring the dashboard `blended` toggle. FastAPI/Pydantic coerces `?longevity=true|false` (the
+    exact `URLSearchParams` shape) — covered by the TestClient tests.
+  - **Not formally in PLAN** (PLAN stops at M6); this is the top v2-backlog item. No new deps, no
+    schema change, ruff-clean. Committed 2026-07-15.
 - **M6 catalog refresh + scheduling done (2026-07-14):**
   - **Same transport seam as M5, applied to scrapers.** Each GSMArena scraper injects a
     `fetch(url)->html` callable, so `parse_review_html`/`rollup_chipsets` and
@@ -341,10 +394,11 @@ affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the first **liv
 
 ## Open questions
 
-- [ ] **`trust_score` composition (from M3):** §5.6 folds rating / Mall / Star into a `trust_score`
-      but gives no weights, so M3 leaves it `None` (stored raw fields suffice for filtering). Define
-      a formula in M4/M5 when the UI/source need is concrete — filter + column, off `capability`
-      (§5.6), no fabricated weights. (default: derive when M4 wires the Listings/Settings filters)
+- [x] ~~**`trust_score` composition (from M3):**~~ **resolved (M7):** `domain/trust.py:trust_score`
+      = 0–100 composite over rating/log10(reviews)/Mall/Star, re-weighted over present signals only
+      (no fabricated 0s), `None` when no signal; a column + filter, **off `capability`** (§5.6).
+      Computed once in `_build_listing`, persisted. Optional soft `value` penalty
+      (`trust_value_factor`) ships behind the off-by-default `trust_penalty` toggle.
 - [ ] **#3 residual:** chipset-sharing pushes most listings to `full`; is a per-metric imputation
       fallback wanted for the rare SoC with zero Wild Life data, or just mark `partial`? (default: mark partial)
 - [ ] **Legacy battery bound (from M1):** `battery()` currently supports only Active-Use-v2;

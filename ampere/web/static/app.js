@@ -16,6 +16,8 @@ const state = {
   screen: "dashboard",
   w_perf: 0.55,
   blended: false,
+  longevity: false,
+  trust_penalty: false,
   mall_only: false,
   frontier_only: false,
   brand: "all",
@@ -49,7 +51,10 @@ async function apiPost(path, body) {
   return r.json();
 }
 
-const serverParams = () => ({ w_perf: state.w_perf, blended: state.blended });
+const serverParams = () => ({
+  w_perf: state.w_perf, blended: state.blended,
+  longevity: state.longevity, trust_penalty: state.trust_penalty,
+});
 
 // --- load + chrome ---------------------------------------------------------------------------
 async function load(screen) {
@@ -443,8 +448,8 @@ const arrivalRow = (r) => `
 
 // --- settings --------------------------------------------------------------------------------
 function renderSettings(data) {
-  const toggle = (on, label, note) =>
-    `<label class="set-toggle"><span>${esc(label)} <span class="dim">${esc(note)}</span></span><input type="checkbox" ${on ? "checked" : ""} disabled></label>`;
+  const toggle = (on, label, note, id) =>
+    `<label class="set-toggle"><span>${esc(label)} <span class="dim">${esc(note)}</span></span><input type="checkbox" ${on ? "checked" : ""} ${id ? `id="${id}"` : "disabled"}></label>`;
   $("#content").innerHTML = `
     <div class="screen-head"><h1>Settings</h1></div>
     <div class="settings">
@@ -469,8 +474,8 @@ function renderSettings(data) {
         <div class="set-label">FILTERS &amp; TOGGLES</div>
         ${toggle(data.mall_only, "Mall only", '(SHOP_TYPE=OFFICIAL_MALL — practical "new" proxy)')}
         ${toggle(data.blended, "Blend conditions in frontier", "(off = new vs new, used vs used)")}
-        ${toggle(data.longevity_bonus_enabled, "Longevity bonus", "(fold OS-update years into capability)")}
-        ${toggle(data.trust_penalty_enabled, "Trust penalty on value", "(soft-penalize low-trust listings)")}
+        ${toggle(data.longevity_bonus_enabled, "Longevity bonus", "(fold OS-update years into capability)", "tg-longevity")}
+        ${toggle(data.trust_penalty_enabled, "Trust penalty on value", "(soft-penalize low-trust listings)", "tg-trust")}
       </div>
       <div class="set-section">
         <div class="set-label">SOURCE</div>
@@ -489,6 +494,10 @@ function renderSettings(data) {
     </div>`;
 
   wireWeightSlider("settings");
+  // Bonus toggles re-score server-side (like the weight slider); serverParams() carries them to
+  // every screen, so the dashboard/listings reflect the choice too.
+  $("#tg-longevity").onchange = (e) => { state.longevity = e.target.checked; load("settings"); };
+  $("#tg-trust").onchange = (e) => { state.trust_penalty = e.target.checked; load("settings"); };
   $("#run-now").onclick = async (e) => {
     const btn = e.target; btn.disabled = true; btn.textContent = "running…";
     try {

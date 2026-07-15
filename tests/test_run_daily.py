@@ -191,3 +191,17 @@ class TestTransactionalFailure:
             "SELECT status FROM runs WHERE snapshot_date = ?", (_D2.isoformat(),)
         ).fetchone()["status"]
         assert d2_status == "failed"
+
+
+class TestTrustScore:
+    """M7: the seller-trust composite (§5.6) is computed once when a listing is built and persisted
+    as a column — weight-independent, so it is not part of the re-scoring path."""
+
+    def test_computes_and_persists_trust_score(self, uow):
+        _run(uow, FixtureSource(), _D2)
+        by_id = {listing.shopee_id: listing for listing in uow.listings.for_snapshot(_D2)}
+        # L01 is Mall + high rating + many reviews + Star -> strong trust, persisted (not None).
+        assert by_id["L01"].trust_score is not None and by_id["L01"].trust_score >= 90
+        # Trust is a seller property, so it is computed for unmatched listings too (L22 carries a
+        # rating + review count) — it never depends on the catalog match.
+        assert by_id["L22"].trust_score is not None

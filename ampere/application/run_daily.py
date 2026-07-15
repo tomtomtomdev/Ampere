@@ -35,6 +35,7 @@ from ampere.domain.models import (
 )
 from ampere.domain.pricing import effective_price, price_confidence
 from ampere.domain.resolve import resolve
+from ampere.domain.trust import trust_score
 from ampere.ports.repositories import UnitOfWork
 from ampere.ports.search_source import SearchSource
 
@@ -58,6 +59,10 @@ def _build_listing(
         shipping_est=raw.shipping_est, voucher_est=raw.voucher_est, cashback_est=raw.cashback_est,
         is_mall=raw.is_mall, seller_rating=raw.seller_rating,
         seller_review_count=raw.seller_review_count, is_star_seller=raw.is_star_seller,
+        trust_score=trust_score(
+            seller_rating=raw.seller_rating, seller_review_count=raw.seller_review_count,
+            is_mall=raw.is_mall, is_star_seller=raw.is_star_seller,
+        ),
         seller_location=raw.shop_location, url=raw.url, confidence=Confidence.UNMATCHED,
     )
 

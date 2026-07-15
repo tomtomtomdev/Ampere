@@ -120,3 +120,39 @@ class TestNeedsMappingResolver:
         client.post("/api/run")
         data = client.get("/api/catalog").json()
         assert "L22" not in {n["shopee_id"] for n in data["needs_mapping"]}
+
+
+class TestBonusToggles:
+    """M7: longevity bonus (§11.1) + trust penalty (§5.6) are per-request query params, off by
+    default, that re-score live (like the weight sliders); trust_score is a listing column."""
+
+    def test_longevity_query_param_raises_capability(self, client):
+        base = client.get("/api/listings").json()["rows"]
+        boosted = client.get("/api/listings", params={"longevity": "true"}).json()["rows"]
+        cap_a = {r["shopee_id"]: r["capability"] for r in base}
+        cap_b = {r["shopee_id"]: r["capability"] for r in boosted}
+        # every demo device promises >=2 OS-update years, so enabling the bonus can only raise cap
+        assert all(cap_b[k] >= cap_a[k] for k in cap_a)
+        assert any(cap_b[k] > cap_a[k] for k in cap_a)
+
+    def test_trust_penalty_query_param_leaves_mall_value_unchanged(self, client):
+        base = client.get("/api/listings").json()["rows"]
+        pen = client.get("/api/listings", params={"trust_penalty": "true"}).json()["rows"]
+        val_a = {r["shopee_id"]: r["value"] for r in base}
+        val_b = {r["shopee_id"]: r["value"] for r in pen}
+        # L01 is a Mall store -> the low-trust penalty never applies, value is identical
+        assert val_b["L01"] == pytest.approx(val_a["L01"])
+
+    def test_listing_rows_carry_trust_score(self, client):
+        rows = client.get("/api/listings").json()["rows"]
+        assert all("trust_score" in r for r in rows)
+        row = next(r for r in rows if r["shopee_id"] == "L01")
+        assert row["trust_score"] is not None and row["trust_score"] >= 90
+
+    def test_settings_reflects_the_toggles(self, client):
+        on = client.get(
+            "/api/settings", params={"longevity": "true", "trust_penalty": "true"}
+        ).json()
+        assert on["longevity_bonus_enabled"] is True and on["trust_penalty_enabled"] is True
+        off = client.get("/api/settings").json()
+        assert off["longevity_bonus_enabled"] is False and off["trust_penalty_enabled"] is False

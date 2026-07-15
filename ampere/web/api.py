@@ -29,7 +29,13 @@ from ampere.application import views
 from ampere.application.demo_seed import bootstrap
 from ampere.application.run_daily import catch_up, run_daily
 from ampere.application.views import ViewParams
-from ampere.config import DEFAULT_KEYWORD, DEFAULT_PRICE_MAX, DEFAULT_PRICE_MIN
+from ampere.config import (
+    DEFAULT_KEYWORD,
+    DEFAULT_PRICE_MAX,
+    DEFAULT_PRICE_MIN,
+    LONGEVITY_BONUS_ENABLED,
+    TRUST_PENALTY_ENABLED,
+)
 from ampere.domain.models import RunResult, Weights
 from ampere.domain.resolve import alias_key
 from ampere.ports.repositories import UnitOfWork
@@ -63,6 +69,8 @@ def _params(
     *,
     w_perf: float | None,
     blended: bool,
+    longevity: bool,
+    trust_penalty: bool,
     mall_only: bool,
     keyword: str,
     price_min: int,
@@ -70,7 +78,8 @@ def _params(
     source_kind: str,
 ) -> ViewParams:
     return ViewParams(
-        weights=_weights(w_perf), blended=blended, mall_only=mall_only,
+        weights=_weights(w_perf), blended=blended, longevity_bonus_enabled=longevity,
+        trust_penalty_enabled=trust_penalty, mall_only=mall_only,
         keyword=keyword, price_min=price_min, price_max=price_max, source_kind=source_kind,
     )
 
@@ -114,13 +123,16 @@ def create_app(
         uow: UnitOfWork = Depends(get_uow),
         w_perf: float | None = None,
         blended: bool = False,
+        longevity: bool = LONGEVITY_BONUS_ENABLED,
+        trust_penalty: bool = TRUST_PENALTY_ENABLED,
         mall_only: bool = False,
         keyword: str = DEFAULT_KEYWORD,
         price_min: int = DEFAULT_PRICE_MIN,
         price_max: int = DEFAULT_PRICE_MAX,
     ) -> views.DashboardView:
         params = _params(
-            w_perf=w_perf, blended=blended, mall_only=mall_only, keyword=keyword,
+            w_perf=w_perf, blended=blended, longevity=longevity, trust_penalty=trust_penalty,
+            mall_only=mall_only, keyword=keyword,
             price_min=price_min, price_max=price_max, source_kind=source_factory().kind,
         )
         return views.build_dashboard(uow, views.current_snapshot(uow), params)
@@ -130,13 +142,16 @@ def create_app(
         uow: UnitOfWork = Depends(get_uow),
         w_perf: float | None = None,
         blended: bool = False,
+        longevity: bool = LONGEVITY_BONUS_ENABLED,
+        trust_penalty: bool = TRUST_PENALTY_ENABLED,
         mall_only: bool = False,
         keyword: str = DEFAULT_KEYWORD,
         price_min: int = DEFAULT_PRICE_MIN,
         price_max: int = DEFAULT_PRICE_MAX,
     ) -> views.ListingsView:
         params = _params(
-            w_perf=w_perf, blended=blended, mall_only=mall_only, keyword=keyword,
+            w_perf=w_perf, blended=blended, longevity=longevity, trust_penalty=trust_penalty,
+            mall_only=mall_only, keyword=keyword,
             price_min=price_min, price_max=price_max, source_kind=source_factory().kind,
         )
         return views.build_listings(uow, views.current_snapshot(uow), params)
@@ -150,9 +165,12 @@ def create_app(
         uow: UnitOfWork = Depends(get_uow),
         w_perf: float | None = None,
         blended: bool = False,
+        longevity: bool = LONGEVITY_BONUS_ENABLED,
+        trust_penalty: bool = TRUST_PENALTY_ENABLED,
     ) -> views.ChangesView:
         params = _params(
-            w_perf=w_perf, blended=blended, mall_only=False, keyword=DEFAULT_KEYWORD,
+            w_perf=w_perf, blended=blended, longevity=longevity, trust_penalty=trust_penalty,
+            mall_only=False, keyword=DEFAULT_KEYWORD,
             price_min=DEFAULT_PRICE_MIN, price_max=DEFAULT_PRICE_MAX,
             source_kind=source_factory().kind,
         )
@@ -164,9 +182,12 @@ def create_app(
         w_perf: float | None = None,
         mall_only: bool = False,
         blended: bool = False,
+        longevity: bool = LONGEVITY_BONUS_ENABLED,
+        trust_penalty: bool = TRUST_PENALTY_ENABLED,
     ) -> views.SettingsView:
         params = _params(
-            w_perf=w_perf, blended=blended, mall_only=mall_only, keyword=DEFAULT_KEYWORD,
+            w_perf=w_perf, blended=blended, longevity=longevity, trust_penalty=trust_penalty,
+            mall_only=mall_only, keyword=DEFAULT_KEYWORD,
             price_min=DEFAULT_PRICE_MIN, price_max=DEFAULT_PRICE_MAX,
             source_kind=source_factory().kind,
         )

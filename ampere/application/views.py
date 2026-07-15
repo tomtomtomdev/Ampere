@@ -37,10 +37,14 @@ _AVAILABLE_SOURCES = ["affiliate", "internal", "fixture"]
 # Request-side params (what the UI controls tune)
 # ---------------------------------------------------------------------------
 class ViewParams(BaseModel):
-    """UI-tunable inputs. Weights + blended re-score; the rest are query context/chrome."""
+    """UI-tunable inputs. Weights + blended + the two bonus toggles re-score; the rest are query
+    context/chrome. The toggles default to the config values (both OFF) so an un-parameterized
+    request reproduces exactly what ``run_daily`` persisted (SC3)."""
 
     weights: Weights = Weights()
     blended: bool = False
+    longevity_bonus_enabled: bool = LONGEVITY_BONUS_ENABLED
+    trust_penalty_enabled: bool = TRUST_PENALTY_ENABLED
     mall_only: bool = False
     keyword: str = DEFAULT_KEYWORD
     price_min: int = DEFAULT_PRICE_MIN
@@ -140,6 +144,7 @@ class ListingRow(BaseModel):
     is_frontier: bool
     duplicate_count: int
     seller_rating: float | None
+    trust_score: float | None
     is_mall: bool
     is_star_seller: bool
     seller_location: str | None
@@ -266,7 +271,11 @@ def _load_ctx(uow: UnitOfWork, snapshot_date: date | None, params: ViewParams) -
         return _Ctx(None, [], {}, ScoredSnapshot(), devices_by_id, chipsets_by_id, None, empty_diff)
 
     listings = uow.listings.for_snapshot(snapshot_date)
-    scored = score_snapshot(listings, uow, params.weights, blended=params.blended)
+    scored = score_snapshot(
+        listings, uow, params.weights, blended=params.blended,
+        longevity_enabled=params.longevity_bonus_enabled,
+        trust_penalty_enabled=params.trust_penalty_enabled,
+    )
     prior_date = uow.listings.latest_snapshot_before(snapshot_date)
     prior = uow.listings.for_snapshot(prior_date) if prior_date else []
     diff = compute_diff(prior, listings, snapshot_date=snapshot_date, prior_date=prior_date)
@@ -362,7 +371,8 @@ def build_listings(uow: UnitOfWork, snapshot_date: date | None, params: ViewPara
                 effective_price=listing.effective_price, list_price=listing.list_price,
                 capability=score.capability, value=score.value, confidence=score.confidence.value,
                 is_frontier=score.is_frontier, duplicate_count=dup_of.get(listing.shopee_id, 1),
-                seller_rating=listing.seller_rating, is_mall=listing.is_mall,
+                seller_rating=listing.seller_rating, trust_score=listing.trust_score,
+                is_mall=listing.is_mall,
                 is_star_seller=listing.is_star_seller, seller_location=listing.seller_location,
                 url=listing.url, price_drop=drop_of.get(listing.shopee_id),
             )
@@ -437,8 +447,8 @@ def build_settings(uow: UnitOfWork, snapshot_date: date | None, params: ViewPara
         price_min=params.price_min, price_max=params.price_max,
         weights=WeightsView(w_perf=w.w_perf, w_batt=w.w_batt),
         perf_weights=dict(PERFORMANCE_WEIGHTS), mall_only=params.mall_only, blended=params.blended,
-        longevity_bonus_enabled=LONGEVITY_BONUS_ENABLED,
-        trust_penalty_enabled=TRUST_PENALTY_ENABLED,
+        longevity_bonus_enabled=params.longevity_bonus_enabled,
+        trust_penalty_enabled=params.trust_penalty_enabled,
         source_kind=params.source_kind, sources=list(_AVAILABLE_SOURCES),
         scoring_version=SCORING_VERSION, schedule=Schedule(last_run=ctx.snapshot_date),
     )
