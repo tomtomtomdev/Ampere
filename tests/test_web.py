@@ -196,3 +196,15 @@ class TestDailyPush:
         resp = client.post("/api/notify")
         assert resp.status_code == 200
         assert resp.json()["ok"] == "false"
+
+
+class TestReportPage:
+    """M9: GET /api/report serves the self-contained shareable HTML snapshot (SPEC §11.2)."""
+
+    def test_serves_self_contained_html(self, client):
+        resp = client.get("/api/report")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert resp.text.lstrip().lower().startswith("<!doctype html")
+        assert "AMPERE" in resp.text.upper()
+        assert "<svg" in resp.text  # the inline Pareto scatter

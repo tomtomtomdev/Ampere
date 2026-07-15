@@ -17,8 +17,10 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from ampere.application.notify import notify_daily
+from ampere.application.report import build_report, render_report
 from ampere.application.snapshot import score_snapshot
 from ampere.config import (
     DEFAULT_KEYWORD,
@@ -169,6 +171,8 @@ class RunConfig:
     notify_kind: str | None = None
     telegram_token: str | None = None
     telegram_chat_id: str | None = None
+    # Static shareable report (SPEC §11.2) — None ⇒ OFF. A filesystem path to write the HTML page.
+    report_path: str | None = None
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> RunConfig:
@@ -185,6 +189,7 @@ class RunConfig:
             notify_kind=env.get("AMPERE_NOTIFY") or None,
             telegram_token=env.get("AMPERE_TELEGRAM_TOKEN") or None,
             telegram_chat_id=env.get("AMPERE_TELEGRAM_CHAT_ID") or None,
+            report_path=env.get("AMPERE_REPORT_PATH") or None,
         )
 
 
@@ -215,6 +220,27 @@ def _push_daily_digest(config: RunConfig, uow: UnitOfWork, result: RunResult) ->
             logger.info("notify: nothing on the frontier to push for %s", result.snapshot_date)
     except Exception:
         logger.exception("daily push failed (snapshot already persisted; run remains ok)")
+
+
+def _write_report(config: RunConfig, uow: UnitOfWork, result: RunResult) -> None:
+    """Write the static shareable report to ``config.report_path`` if set (§11.2) — OFF by default.
+
+    Same failure-isolation posture as the push: a write error is logged + swallowed so it never
+    fails an already-persisted run. ``render_report`` is pure; the only I/O is the file write here
+    (the composition root), so the application logic stays adapter-free (invariant #1)."""
+    if not config.report_path:
+        return
+    try:
+        html = render_report(
+            build_report(
+                uow, result.snapshot_date, keyword=config.keyword, price_min=config.price_min,
+                price_max=config.price_max, source_kind=result.source_kind,
+            )
+        )
+        Path(config.report_path).write_text(html, encoding="utf-8")
+        logger.info("wrote shareable report to %s", config.report_path)
+    except Exception:
+        logger.exception("report write failed (snapshot already persisted; run remains ok)")
 
 
 def main() -> int:
@@ -259,6 +285,7 @@ def main() -> int:
                 result.frontier_size,
             )
             _push_daily_digest(config, uow, result)
+            _write_report(config, uow, result)
         return 0
     except Exception:
         logger.exception("daily run failed (transactional — no partial snapshot written)")

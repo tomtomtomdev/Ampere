@@ -4,48 +4,46 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M8 (v2 backlog) done — **daily push notification** (SPEC §11.2), **test-first** and green
-(ruff clean + **295 tests**: +24 for M8 — 22 `test_notify`, 2 `test_web` push). The daily run's
-natural output ("best value in the band this week + the Pareto frontier, outbound/affiliate links
-inline") is pushed to a channel after each scheduled run, behind the **same injected-transport seam
-as M5/M6**. New `ports/notifier.py` (`Notifier` Protocol = `kind` + `send(text)`, channel-agnostic).
-New `application/notify.py` = a read model for the push channel (sibling of `views.py`): `PushDigest`/
-`PushItem` DTOs + `build_push_digest` + a **pure `render_digest`** (plain text, no Markdown → no
-channel escaping) + `notify_daily` (build→render→send). The digest is computed from the **same
-`score_snapshot` at default weights (both toggles off)**, so the push equals what `run_daily`
-persisted and the dashboard shows (SC3); URLs ride through but never touch scoring (§11.2). Adapters
-under `adapters/notify/`: `TelegramNotifier` (Bot API `sendMessage`; the HTTP POST is an injected
-`transport` so the URL/payload are asserted offline, live path best-effort/untested like the M5/M6
-fetchers) + `StdoutNotifier` (dry-run) behind `build_notifier(kind)`. **Off by default (the
-load-bearing invariant):** no push unless the composition root wires a channel from env — `run_daily.
-main()` reads `AMPERE_NOTIFY`/`AMPERE_TELEGRAM_TOKEN`/`_CHAT_ID` into `RunConfig` and pushes after a
-run via `_push_daily_digest` (builds the notifier — the only adapter touch, local import — and is
-**failure-isolated**: a push outage never fails an already-persisted run); nothing is sent when the
-frontier is empty. Web: `POST /api/notify` + `create_app(notifier_factory=…)` = the manual
-counterpart, also off by default (reports "not configured" rather than 500ing). No schema change, no
-new deps (existing `httpx`). **End-to-end verified (scratch):** demo snapshot → `StdoutNotifier`
-renders the human digest (best-value pick + a 4-point value-ranked frontier, per-condition dups shown
-per §5.3); `ampere-run-daily AMPERE_NOTIFY=stdout` on the pre-refresh real seed runs, logs "nothing
-on the frontier to push" (frontier 0), exits 0 — the wiring executes + handles the empty case.
-Un-committed. **Prior:** M7 done — seller-trust composition (§5.6) + software-update longevity bonus
-(§11.1): pure `domain/{trust,longevity}.py`, wired behind off-by-default per-request toggles;
-persisted scores + `SCORING_VERSION` v2.1.0 unchanged (SC3). M6 done — GSMArena perf+battery scrapers
-+ `refresh_catalog` + real seed + `main()`/`catch_up` (SC8) + launchd/cron assets. (Full M6/M7 detail
-in the decisions log.)
-**Next action:** commit M8. Then two **live-only** validations gate the remaining v2 backlog (both
-need external access, not buildable offline): (1) get a real Telegram bot token + chat id and confirm
-`TelegramNotifier` posts (the payload shape is asserted, but no live call has been made — same
-posture as the untested httpx fetchers); (2) capture a real affiliate feed to confirm
-`AffiliateFeedSource.parse_offer` and run the first **live** GSMArena `refresh_catalog` (fills the
-ID-band SoC benchmarks → the daily push starts carrying a real frontier). Un-automated UI step still
-open from M7: click-through the two Settings toggles in a browser. Optionally add a "share now" button
-to the SPA wired to `POST /api/notify` (endpoint + JS state exist; no button yet — JS untouched in M8).
+**Phase:** M9 (v2 backlog) done — **static shareable frontier report** (SPEC §11.2), **test-first**
+and green (ruff clean + **308 tests**: +13 for M9 — 12 `test_report`, 1 `test_web` report page). The
+publishable sibling of the M8 push: a **self-contained HTML page** (inline CSS + an inline-SVG
+capability-vs-price scatter, **no external assets**) of the best-value pick + the Pareto frontier,
+carrying each listing's outbound/affiliate link. New `application/report.py` = a read model that
+**reuses the M4 dashboard** (`build_dashboard`) — so the published numbers are exactly what the UI
+shows / `run_daily` persisted (SC3, no third math site) — plus a **pure `render_report`** (DTO →
+HTML string; escapes all dynamic text) and a pure `_scatter_svg` (one `<circle>` per point, frontier
+filled / dominated greyed; the legend lives in HTML so the circle count == point count; `_scale`
+guards a zero-width range). `ReportView` reuses `views.Meta`/`Point`/`FrontierRow` + a
+`url_by_id` outbound-link map (URLs never touch scoring, §11.2). **Off by default:** `run_daily.
+main()` writes the page to `AMPERE_REPORT_PATH` after a run via `_write_report` (the only I/O is the
+file write in the composition root — `render_report` is pure, so the app layer stays adapter-free;
+**failure-isolated** like the push). Web: `GET /api/report` serves the same page live (`HTMLResponse`).
+No schema change, no new deps. **End-to-end verified (scratch):** demo snapshot → a 5.2 KB valid HTML
+doc (7 points / 7 `<circle>`s / 4-row frontier / 0 external assets); `ampere-run-daily
+AMPERE_REPORT_PATH=…` on the pre-refresh real seed writes a valid page with an empty frontier (frontier
+0) and exits 0.
+Un-committed. **Prior:** M8 done — daily push notification (§11.2): `Notifier` port +
+`application/notify.py` digest read model (pure `render_digest`) + Telegram/stdout adapters behind
+`build_notifier`, wired into `main()` + `POST /api/notify`, off by default + failure-isolated,
+injected transport (committed `c455215`). M7 done — trust composition (§5.6) + longevity bonus (§11.1)
+behind off-by-default toggles, `SCORING_VERSION` v2.1.0 unchanged (SC3). M6 done — GSMArena scrapers +
+`refresh_catalog` + real seed + `main()`/`catch_up` (SC8) + launchd/cron. (Full detail in the
+decisions log.)
+**Next action:** commit M9. The remaining v2 backlog is gated on **external access** (not buildable
+offline): (1) a real Telegram bot token + chat id to confirm `TelegramNotifier` posts (payload
+asserted, no live call yet); (2) capture a real affiliate feed to confirm `AffiliateFeedSource.
+parse_offer`, then the first **live** GSMArena `refresh_catalog` (fills the ID-band SoC benchmarks →
+the push + report start carrying a real frontier). Offline follow-ups if wanted: wire a "share now" /
+"open report" button into the SPA (`POST /api/notify` + `GET /api/report` already exist; JS untouched);
+expand `devices_seed.csv` + resolve the open #3 imputation question. Un-automated UI step from M7:
+click-through the two Settings toggles in a browser.
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12).
 `uv pip install --python .venv -e ".[dev,web]"` (the `dev` extra self-references `ampere[scrape]` =
 `beautifulsoup4`; lxml optional, stdlib `html.parser` fallback). Headless run:
 `AMPERE_SOURCE=fixture .venv/bin/ampere-run-daily`. Daily push (off by default): add
 `AMPERE_NOTIFY=telegram AMPERE_TELEGRAM_TOKEN=… AMPERE_TELEGRAM_CHAT_ID=…` (or `AMPERE_NOTIFY=stdout`
-to dry-run the digest). Web UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on
+to dry-run). Shareable report (off by default): add `AMPERE_REPORT_PATH=…/frontier.html` (or hit
+`GET /api/report`). Web UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on
 first start, then catches up).
 
 ## Milestone tracker
@@ -61,9 +59,38 @@ first start, then catches up).
 | M6 | Catalog refresh + schedule + skill| ✅ done  | GSMArena perf+battery scrapers (injected transport) + refresh_catalog + real seed loader + `main()`/catch-up (SC8) + launchd/cron assets; skill was M2 |
 | M7 | Trust composition + longevity bonus| ✅ done  | v2 backlog: `trust_score`/`trust_value_factor` (§5.6) + `longevity_bonus` (§11.1), pure + wired behind off-by-default per-request toggles; persisted scores/version unchanged (SC3); TDD |
 | M8 | Daily push notification            | ✅ done  | v2 backlog: `Notifier` port + `application/notify.py` (digest read model, pure `render_digest`) + Telegram/stdout adapters behind `build_notifier`; wired into `main()` + `POST /api/notify`, off by default, failure-isolated; injected-transport seam; TDD (§11.2) |
+| M9 | Static shareable report            | ✅ done  | v2 backlog: `application/report.py` reuses `build_dashboard`; pure `render_report` → self-contained HTML (inline CSS + inline-SVG scatter, no external assets) + outbound links; wired into `main()` (`AMPERE_REPORT_PATH`) + `GET /api/report`, off by default, failure-isolated; TDD (§11.2) |
 
 ## Decisions log
 
+- **M9 static shareable report done (2026-07-15):**
+  - **The other half of §11.2.** M8 built the push *channel*; M9 builds the shareable *artifact* —
+    "keep the frontier/report shareable (a static public page later)". A `GET /api/report` serves it
+    live and `AMPERE_REPORT_PATH` writes it to disk after each run, so it can be hosted anywhere
+    (static host / synced folder). Chosen as M9 because it was the strongest *offline-buildable*
+    milestone left (the remaining backlog — real Telegram post, real affiliate feed, live GSMArena
+    refresh — all need external access).
+  - **Reuse over a third math site.** `build_report` calls **`build_dashboard`** rather than
+    re-deriving points/frontier/chip-names, so the report, the dashboard, and the persisted snapshot
+    can't diverge (SC3). It adds only a `url_by_id` outbound-link map (from the listings) on top.
+    (Contrast M8's `notify.py`, which reimplemented a small frontier ranking; the dashboard already
+    gives ranked `top_frontier` + all `points` for the scatter, so reuse was the clean call here.)
+  - **`render_report` is pure + self-contained.** DTO → one HTML document, inline `<style>`, an
+    inline-SVG scatter, **zero external assets** (asserted: no `<link>`/`<script src>`/stylesheet) so
+    the file publishes as-is under a strict host. All dynamic text is `html.escape`d (an XSS test
+    pins it — a hostile listing title can't inject markup into a published page). URLs ride through
+    as `rel="nofollow noopener"` anchors; scoring never reads them (§11.2).
+  - **Scatter invariant:** exactly one `<circle>` per point (frontier filled, dominated greyed); the
+    legend swatches are HTML spans, not SVG circles, so `count("<circle") == len(points)` holds (the
+    test pins it). `_scale` centres a zero-width range instead of dividing by zero (degenerate
+    single-point / all-same-price snapshots).
+  - **Off by default + failure-isolated**, same posture as M8: `main()._write_report` writes only
+    when `AMPERE_REPORT_PATH` is set, and a write error is logged + swallowed so it never fails an
+    already-persisted run. The only I/O is the file write in the composition root — `render_report`
+    is pure, so the application layer stays adapter-free (invariant #1). Nothing special is needed for
+    an empty frontier: the page renders a "no frontier yet" table + a scatter with 0 circles.
+  - **No schema change, no new deps.** `NOTIFY_FRONTIER_LIMIT` unchanged (the report lists the full
+    frontier, not a top-N). Not committed (awaiting user).
 - **M8 daily push notification done (2026-07-15):**
   - **Off-by-default is again the load-bearing invariant** (like M7's toggles). No push happens
     unless the *composition root* wires a channel from env (`AMPERE_NOTIFY`); the use-case never

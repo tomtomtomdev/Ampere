@@ -19,6 +19,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -28,6 +29,7 @@ from ampere.adapters.sources.fixture_source import FixtureSource
 from ampere.application import views
 from ampere.application.demo_seed import bootstrap
 from ampere.application.notify import notify_daily
+from ampere.application.report import build_report, render_report
 from ampere.application.run_daily import catch_up, run_daily
 from ampere.application.views import ViewParams
 from ampere.config import (
@@ -223,6 +225,14 @@ def create_app(
             source_kind=source_factory().kind,
         )
         return {"ok": "true", "sent": "true" if digest is not None else "false"}
+
+    @app.get("/api/report", response_class=HTMLResponse)
+    def report(uow: UnitOfWork = Depends(get_uow)) -> HTMLResponse:
+        """Serve the self-contained shareable HTML snapshot of the current frontier (SPEC §11.2)."""
+        html = render_report(
+            build_report(uow, views.current_snapshot(uow), source_kind=source_factory().kind)
+        )
+        return HTMLResponse(html)
 
     # Static SPA shell last, mounted at root so /api/* wins.
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

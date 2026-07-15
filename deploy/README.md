@@ -22,6 +22,7 @@ second run replaces rather than duplicates. That is what makes catch-up safe.
 | `AMPERE_NOTIFY` | none (off) | daily push channel: `telegram` · `stdout` (dry-run). Unset ⇒ no push. |
 | `AMPERE_TELEGRAM_TOKEN` | none | Telegram Bot API token (from @BotFather) — required for `telegram` |
 | `AMPERE_TELEGRAM_CHAT_ID` | none | target chat/channel id — required for `telegram` |
+| `AMPERE_REPORT_PATH` | none (off) | write the self-contained shareable HTML report to this path after each run |
 
 ### Daily push (SPEC §11.2)
 
@@ -36,6 +37,17 @@ message it (or add it to a group), resolve the numeric chat id, then:
 export AMPERE_NOTIFY=telegram AMPERE_TELEGRAM_TOKEN=123456:ABC... AMPERE_TELEGRAM_CHAT_ID=42
 ampere-run-daily                       # or set these in the launchd plist / crontab env
 AMPERE_NOTIFY=stdout ampere-run-daily  # dry-run: print exactly what the channel would receive
+```
+
+### Shareable report (SPEC §11.2)
+
+Set `AMPERE_REPORT_PATH` to write a **self-contained** HTML snapshot of the frontier after each run
+(inline CSS + inline-SVG capability-vs-price scatter, no external assets — publishable as-is, e.g.
+to a static host or synced folder). The same page is served live at `GET /api/report`. Off by
+default; a write failure never fails the run.
+
+```sh
+AMPERE_REPORT_PATH=$HOME/ampere/data/frontier.html ampere-run-daily
 ```
 
 On the **first** run against a fresh DB, the real reference catalog is seeded from `data/seed/`
