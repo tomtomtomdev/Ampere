@@ -18,6 +18,7 @@ import os
 from dataclasses import dataclass
 from datetime import date
 
+from ampere.application.notify import notify_daily
 from ampere.application.snapshot import score_snapshot
 from ampere.config import (
     DEFAULT_KEYWORD,
@@ -164,6 +165,10 @@ class RunConfig:
     mall_only: bool = False
     db_path: str | None = None  # None → the adapter's DEFAULT_DB_PATH
     cache_dir: str | None = None  # JsonFileCache dir for a live source ("cache hard", §6)
+    # Daily push channel (SPEC §11.2) — None ⇒ OFF (no digest pushed). "telegram" | "stdout".
+    notify_kind: str | None = None
+    telegram_token: str | None = None
+    telegram_chat_id: str | None = None
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> RunConfig:
@@ -177,7 +182,39 @@ class RunConfig:
             mall_only=flag,
             db_path=env.get("AMPERE_DB") or None,
             cache_dir=env.get("AMPERE_CACHE_DIR") or None,
+            notify_kind=env.get("AMPERE_NOTIFY") or None,
+            telegram_token=env.get("AMPERE_TELEGRAM_TOKEN") or None,
+            telegram_chat_id=env.get("AMPERE_TELEGRAM_CHAT_ID") or None,
         )
+
+
+def _push_daily_digest(config: RunConfig, uow: UnitOfWork, result: RunResult) -> None:
+    """Push the daily digest when a channel is configured (SPEC §11.2) — OFF by default.
+
+    The notifier is built HERE (composition root), never in the ``notify_daily`` use-case, so the
+    application layer stays adapter-free (invariant #1). A push outage must never fail an
+    already-persisted run, so every failure is logged and swallowed — the run stays ``ok``."""
+    if not config.notify_kind:
+        return
+    try:
+        from ampere.adapters.notify import build_notifier
+
+        notifier = build_notifier(
+            config.notify_kind, token=config.telegram_token, chat_id=config.telegram_chat_id,
+        )
+        digest = notify_daily(
+            uow, notifier, snapshot_date=result.snapshot_date, keyword=config.keyword,
+            price_min=config.price_min, price_max=config.price_max, source_kind=result.source_kind,
+        )
+        if digest is not None:
+            logger.info(
+                "pushed daily digest via %s (%d frontier points)",
+                notifier.kind, len(digest.frontier),
+            )
+        else:
+            logger.info("notify: nothing on the frontier to push for %s", result.snapshot_date)
+    except Exception:
+        logger.exception("daily push failed (snapshot already persisted; run remains ok)")
 
 
 def main() -> int:
@@ -221,6 +258,7 @@ def main() -> int:
                 result.snapshot_date, result.listing_count, result.matched_count,
                 result.frontier_size,
             )
+            _push_daily_digest(config, uow, result)
         return 0
     except Exception:
         logger.exception("daily run failed (transactional — no partial snapshot written)")

@@ -27,6 +27,7 @@ from ampere.adapters.repos.sqlite_repos import SqliteUnitOfWork
 from ampere.adapters.sources.fixture_source import FixtureSource
 from ampere.application import views
 from ampere.application.demo_seed import bootstrap
+from ampere.application.notify import notify_daily
 from ampere.application.run_daily import catch_up, run_daily
 from ampere.application.views import ViewParams
 from ampere.config import (
@@ -38,6 +39,7 @@ from ampere.config import (
 )
 from ampere.domain.models import RunResult, Weights
 from ampere.domain.resolve import alias_key
+from ampere.ports.notifier import Notifier
 from ampere.ports.repositories import UnitOfWork
 from ampere.ports.search_source import SearchSource
 
@@ -90,11 +92,13 @@ def create_app(
     source_factory: Callable[[], SearchSource] = FixtureSource,
     clock: Callable[[], date] = date.today,
     on_startup: Callable[[], None] | None = None,
+    notifier_factory: Callable[[], Notifier] | None = None,
 ) -> FastAPI:
     """Build the app. ``uow_factory`` returns a fresh UoW per request (composition root wires it).
 
     ``on_startup`` (optional) runs once when the app begins serving — the default app uses it to
     seed the demo DB. Tests omit it (no import-time or startup side effects on the real DB).
+    ``notifier_factory`` (optional) wires the ``POST /api/notify`` push channel; omitted ⇒ off.
     """
     lifespan = None
     if on_startup is not None:
@@ -206,6 +210,19 @@ def create_app(
     def catalog_map(body: MapRequest, uow: UnitOfWork = Depends(get_uow)) -> dict[str, str]:
         uow.aliases.remember(alias_key(body.title), body.device_id)
         return {"ok": "true", "key": alias_key(body.title), "device_id": body.device_id}
+
+    @app.post("/api/notify")
+    def notify(uow: UnitOfWork = Depends(get_uow)) -> dict[str, str]:
+        """Push the current snapshot's digest through the wired channel — the manual counterpart to
+        the scheduled daily push (SPEC §11.2). Off by default: with no notifier configured it
+        reports rather than erroring; nothing is sent when the frontier is empty."""
+        if notifier_factory is None:
+            return {"ok": "false", "reason": "no notifier configured"}
+        digest = notify_daily(
+            uow, notifier_factory(), snapshot_date=views.current_snapshot(uow),
+            source_kind=source_factory().kind,
+        )
+        return {"ok": "true", "sent": "true" if digest is not None else "false"}
 
     # Static SPA shell last, mounted at root so /api/* wins.
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

@@ -19,6 +19,24 @@ second run replaces rather than duplicates. That is what makes catch-up safe.
 | `AMPERE_MALL_ONLY` | off | `1`/`true` to restrict to Shopee Mall |
 | `AMPERE_DB` | adapter default (`data/ampere.db`) | SQLite path |
 | `AMPERE_CACHE_DIR` | none | on-disk page cache for live sources ("cache hard", §6) |
+| `AMPERE_NOTIFY` | none (off) | daily push channel: `telegram` · `stdout` (dry-run). Unset ⇒ no push. |
+| `AMPERE_TELEGRAM_TOKEN` | none | Telegram Bot API token (from @BotFather) — required for `telegram` |
+| `AMPERE_TELEGRAM_CHAT_ID` | none | target chat/channel id — required for `telegram` |
+
+### Daily push (SPEC §11.2)
+
+After each successful run, if `AMPERE_NOTIFY` names a channel, the run pushes a digest — the
+best-value phone in the band plus the Pareto frontier (with outbound/affiliate links inline). It is
+**off by default** (unset ⇒ nothing sent), and a push failure never fails the run (the snapshot is
+already persisted). Nothing is sent when the frontier is empty (e.g. before the first
+`refresh_catalog` fills the ID-band SoC benchmarks). Telegram setup: create a bot via @BotFather,
+message it (or add it to a group), resolve the numeric chat id, then:
+
+```sh
+export AMPERE_NOTIFY=telegram AMPERE_TELEGRAM_TOKEN=123456:ABC... AMPERE_TELEGRAM_CHAT_ID=42
+ampere-run-daily                       # or set these in the launchd plist / crontab env
+AMPERE_NOTIFY=stdout ampere-run-daily  # dry-run: print exactly what the channel would receive
+```
 
 On the **first** run against a fresh DB, the real reference catalog is seeded from `data/seed/`
 (`chipsets_seed.csv` + `devices_seed.csv`). Benchmarks/battery for the ID-band SoCs are filled by

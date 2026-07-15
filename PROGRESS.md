@@ -4,53 +4,49 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M7 (v2 backlog) done — seller-trust composition (§5.6) + software-update longevity
-bonus (§11.1), **test-first** and green (ruff clean + **271 tests**: +29 for M7 — 5
-`test_longevity`, 11 `test_trust`, 11 `test_snapshot` [longevity/trust-penalty wiring], +1
-`test_run_daily` trust-score, +1 `test_web` bonus-toggles group). Three pure domain fns —
-`domain/longevity.py:longevity_bonus` (OS-years → up-to-`LONGEVITY_BONUS_MAX` additive capability
-points, unknown→0, clamped) and `domain/trust.py:{trust_score,trust_value_factor}` (0–100 seller
-composite re-weighted over affirmatively-present signals; soft `value` penalty for low-trust
-non-Mall) — are now **wired end-to-end behind off-by-default toggles**: `score_listing`/
-`score_snapshot` gained `longevity_enabled`/`trust_penalty_enabled` kwargs defaulting to the config
-flags (both OFF), so `run_daily` persists **unchanged** scores and `SCORING_VERSION` stays v2.1.0
-(SC3). The longevity bonus enters `capability` (so it also moves the value axis + frontier); the
-trust penalty multiplies `value` only. `trust_score` is computed once in `_build_listing`
-(weight-independent) and persisted (column already round-tripped). Web: `ViewParams` +
-`?longevity=`/`?trust_penalty=` query params on dashboard/listings/changes/settings re-score live;
-Settings reports the per-request state; `ListingRow` carries `trust_score`; the two Settings toggles
-are now interactive (mirror the dashboard `blended` toggle → `serverParams()` → re-fetch).
-Un-committed. **Prior:** M6 done — catalog refresh + automatic scheduling, all **test-first** and
-green (ruff clean + 242 tests: +50 for M6 — 11 `test_gsmarena_perf`, 8 `test_gsmarena_battery`, 7
-`test_refresh_catalog`, 8 `test_catalog_seed`, 8 `test_scheduler`, 8 `test_deploy_assets`).
-GSMArena scrapers now live in `adapters/scrapers/` behind an injected `fetch(url)->html` transport
-(all parsing/rollup pure + offline-tested; the `httpx` fetchers are best-effort, untested — the M5
-seam pattern): `gsmarena_perf` (one review page → GB6/AnTuTu-**v10**/WildLife-**Extreme** per
-chipset, median rollup, the per-`.phones`-tab gotcha handled) + `gsmarena_battery` (Active Use
-`HH:MMh`→decimal hours). New `application/refresh_catalog.py` upserts chipsets (provenance +
-`fetched_at`) and attaches battery to devices by normalized name (SC7). New
-`application/catalog_seed.py` loads the real `data/seed/{chipsets,devices}_seed.csv`: device→chipset
-mappings + `os/security_updates_years` are honest facts (update years flagged pledge-vs-estimate in
-`update_source`, §11.1), while battery/benchmarks come from the scrape — **never fabricated** (an
-unknown SoC gets a "pending: gsmarena refresh" chipset stub so the FK holds). `run_daily.main()` is
-now wired (config from env via `RunConfig.from_env`, SQLite UoW, `build_source`, `JsonFileCache`,
-first-run `load_seed`) around a **guarded `catch_up()`** (SC8); launch-time catch-up also runs on
-web startup. Shipped OS-scheduler install assets in `deploy/` (launchd plist @06:00 + `RunAtLoad`;
-cron + `@reboot`; install README) with a `plistlib` validity test.
-**End-to-end verified (scratch):** headless `ampere-run-daily` seeds+runs then **skips** on re-run
-(exactly one `runs` row, SC8); a `refresh_catalog` filling the ID-band SoCs then makes the same
-unmodified fixture run **score 6 listings + a 3-point Pareto frontier** — the monthly-refresh →
-daily-score loop closes (SC7 + SC4).
-**Next action:** M7 committed. One unautomated step remains: click-through the two new Settings
-toggles in a real browser (the JS mirrors the tested `blended` toggle + was syntax-checked, but the
-browser event chain itself has no test). Then the remaining v2 backlog (see open questions): capture
-a real affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the first **live** GSMArena
-`refresh_catalog` and expand the device seed; optional Telegram daily push.
+**Phase:** M8 (v2 backlog) done — **daily push notification** (SPEC §11.2), **test-first** and green
+(ruff clean + **295 tests**: +24 for M8 — 22 `test_notify`, 2 `test_web` push). The daily run's
+natural output ("best value in the band this week + the Pareto frontier, outbound/affiliate links
+inline") is pushed to a channel after each scheduled run, behind the **same injected-transport seam
+as M5/M6**. New `ports/notifier.py` (`Notifier` Protocol = `kind` + `send(text)`, channel-agnostic).
+New `application/notify.py` = a read model for the push channel (sibling of `views.py`): `PushDigest`/
+`PushItem` DTOs + `build_push_digest` + a **pure `render_digest`** (plain text, no Markdown → no
+channel escaping) + `notify_daily` (build→render→send). The digest is computed from the **same
+`score_snapshot` at default weights (both toggles off)**, so the push equals what `run_daily`
+persisted and the dashboard shows (SC3); URLs ride through but never touch scoring (§11.2). Adapters
+under `adapters/notify/`: `TelegramNotifier` (Bot API `sendMessage`; the HTTP POST is an injected
+`transport` so the URL/payload are asserted offline, live path best-effort/untested like the M5/M6
+fetchers) + `StdoutNotifier` (dry-run) behind `build_notifier(kind)`. **Off by default (the
+load-bearing invariant):** no push unless the composition root wires a channel from env — `run_daily.
+main()` reads `AMPERE_NOTIFY`/`AMPERE_TELEGRAM_TOKEN`/`_CHAT_ID` into `RunConfig` and pushes after a
+run via `_push_daily_digest` (builds the notifier — the only adapter touch, local import — and is
+**failure-isolated**: a push outage never fails an already-persisted run); nothing is sent when the
+frontier is empty. Web: `POST /api/notify` + `create_app(notifier_factory=…)` = the manual
+counterpart, also off by default (reports "not configured" rather than 500ing). No schema change, no
+new deps (existing `httpx`). **End-to-end verified (scratch):** demo snapshot → `StdoutNotifier`
+renders the human digest (best-value pick + a 4-point value-ranked frontier, per-condition dups shown
+per §5.3); `ampere-run-daily AMPERE_NOTIFY=stdout` on the pre-refresh real seed runs, logs "nothing
+on the frontier to push" (frontier 0), exits 0 — the wiring executes + handles the empty case.
+Un-committed. **Prior:** M7 done — seller-trust composition (§5.6) + software-update longevity bonus
+(§11.1): pure `domain/{trust,longevity}.py`, wired behind off-by-default per-request toggles;
+persisted scores + `SCORING_VERSION` v2.1.0 unchanged (SC3). M6 done — GSMArena perf+battery scrapers
++ `refresh_catalog` + real seed + `main()`/`catch_up` (SC8) + launchd/cron assets. (Full M6/M7 detail
+in the decisions log.)
+**Next action:** commit M8. Then two **live-only** validations gate the remaining v2 backlog (both
+need external access, not buildable offline): (1) get a real Telegram bot token + chat id and confirm
+`TelegramNotifier` posts (the payload shape is asserted, but no live call has been made — same
+posture as the untested httpx fetchers); (2) capture a real affiliate feed to confirm
+`AffiliateFeedSource.parse_offer` and run the first **live** GSMArena `refresh_catalog` (fills the
+ID-band SoC benchmarks → the daily push starts carrying a real frontier). Un-automated UI step still
+open from M7: click-through the two Settings toggles in a browser. Optionally add a "share now" button
+to the SPA wired to `POST /api/notify` (endpoint + JS state exist; no button yet — JS untouched in M8).
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12).
 `uv pip install --python .venv -e ".[dev,web]"` (the `dev` extra self-references `ampere[scrape]` =
 `beautifulsoup4`; lxml optional, stdlib `html.parser` fallback). Headless run:
-`AMPERE_SOURCE=fixture .venv/bin/ampere-run-daily`. Web UI:
-`.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on first start, then catches up).
+`AMPERE_SOURCE=fixture .venv/bin/ampere-run-daily`. Daily push (off by default): add
+`AMPERE_NOTIFY=telegram AMPERE_TELEGRAM_TOKEN=… AMPERE_TELEGRAM_CHAT_ID=…` (or `AMPERE_NOTIFY=stdout`
+to dry-run the digest). Web UI: `.venv/bin/uvicorn ampere.web.api:app --reload` (seeds the demo DB on
+first start, then catches up).
 
 ## Milestone tracker
 
@@ -64,9 +60,42 @@ a real affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the firs
 | M5 | Real Shopee source                | ✅ done  | InternalEndpointSource (HAR contract) + AffiliateFeedSource behind injected transport; shared contract suite; SC4 verified |
 | M6 | Catalog refresh + schedule + skill| ✅ done  | GSMArena perf+battery scrapers (injected transport) + refresh_catalog + real seed loader + `main()`/catch-up (SC8) + launchd/cron assets; skill was M2 |
 | M7 | Trust composition + longevity bonus| ✅ done  | v2 backlog: `trust_score`/`trust_value_factor` (§5.6) + `longevity_bonus` (§11.1), pure + wired behind off-by-default per-request toggles; persisted scores/version unchanged (SC3); TDD |
+| M8 | Daily push notification            | ✅ done  | v2 backlog: `Notifier` port + `application/notify.py` (digest read model, pure `render_digest`) + Telegram/stdout adapters behind `build_notifier`; wired into `main()` + `POST /api/notify`, off by default, failure-isolated; injected-transport seam; TDD (§11.2) |
 
 ## Decisions log
 
+- **M8 daily push notification done (2026-07-15):**
+  - **Off-by-default is again the load-bearing invariant** (like M7's toggles). No push happens
+    unless the *composition root* wires a channel from env (`AMPERE_NOTIFY`); the use-case never
+    builds a notifier. So a bare `ampere-run-daily` / a plain `uvicorn` behaves exactly as before —
+    the push is purely additive.
+  - **Same injected-transport seam as M5/M6.** The fragile part (the Telegram Bot API POST) is an
+    injected `transport` on `TelegramNotifier`; the pure part (URL + payload construction) is
+    asserted offline, and the live httpx path is best-effort/untested (no network in CI). The
+    content selection (`build_push_digest`) and rendering (`render_digest`) are 100% pure/offline.
+  - **`notify.py` is a read model for the push channel, not new scoring** — the sibling of
+    `views.py`. It calls the **same `score_snapshot` at default weights / toggles off**, so the
+    pushed frontier is byte-for-byte what `run_daily` persisted and the dashboard shows (SC3, no
+    second math site — the divergence guard we used for weights/longevity/trust). No `scoring_version`
+    change; no schema change.
+  - **Layering (invariant #1 held):** `ports/notifier.py` (Protocol: `kind` + `send(text)`) ←
+    `application/notify.py` (pure, imports only ports/domain/config) ← adapters
+    (`Telegram`/`Stdout` + `build_notifier`). The notifier is constructed only in the composition
+    roots — `run_daily.main()._push_daily_digest` (local adapter import, like `build_source`) and
+    `web.create_app(notifier_factory=…)`. The application layer imports **zero** adapters.
+  - **Failure isolation:** `notify_daily` lets a `send` error propagate (clean, testable contract);
+    `main()` wraps it in try/except + logs, so a push outage never fails an already-persisted run.
+    `notify_daily` sends **nothing** (returns `None`) when there is no snapshot or the frontier is
+    empty — so a pre-refresh real seed (frontier 0) or a dead day doesn't spam an empty push.
+  - **Render is plain text on purpose** — no Markdown, so no channel-specific escaping (Telegram
+    MarkdownV2) can corrupt affiliate URLs; Telegram auto-links bare URLs anyway, and
+    `disable_web_page_preview=True` stops N link unfurls per push.
+  - **`POST /api/notify`** is the manual counterpart to the scheduled push (mirrors `POST /api/run`
+    vs the automatic daily fetch, §8/§8a); off by default (no `notifier_factory` → reports "not
+    configured"). No SPA button yet — the JS was left untouched in M8 (a "share now" button is a
+    small follow-up).
+  - **New config:** `NOTIFY_FRONTIER_LIMIT = 5` (how many frontier points a push lists). No
+    bool flag needed — "configured" *is* the on-switch. **No new deps.** Not committed (awaiting user).
 - **M7 trust composition + longevity bonus done (2026-07-15):**
   - **Off-by-default is the load-bearing invariant.** Both effects ship as per-request toggles that
     default to the config flags (`LONGEVITY_BONUS_ENABLED`/`TRUST_PENALTY_ENABLED`, both `False`).
@@ -416,8 +445,12 @@ a real affiliate feed to confirm `AffiliateFeedSource.parse_offer`; run the firs
       `ampere-run-daily` entrypoint driven by an **OS scheduler** (launchd plist + cron shipped in
       `deploy/`), plus a guarded `catch_up()` on web startup / RunAtLoad / @reboot. Survives restarts,
       no web server required, one code path with the UI's Run-now.
-- [ ] Telegram daily push (Relay/Courier style) — **deferred to v2** (not built in M6; the affiliate
-      `tracking_link` already makes the frontier shareable). Revisit if a push channel is wanted.
+- [x] ~~Telegram daily push (Relay/Courier style)~~ — **done (M8):** `Notifier` port +
+      `application/notify.py` digest read model + `Telegram`/`Stdout` adapters behind
+      `build_notifier`, wired into `main()` + `POST /api/notify`, **off by default**, injected
+      transport, TDD (§11.2). Remaining is **live-only**: a real bot token + chat id to confirm
+      `TelegramNotifier` posts (payload asserted, no live call yet — same posture as the httpx
+      fetchers). The affiliate `tracking_link` rides inline in the push (already shareable).
 - [ ] Confirm affiliate access (Involve Asia / Accesstrade) for Shopee ID feed. **Still blocks
       validating `AffiliateFeedSource.parse_offer` against a real feed** — the schema is assumed;
       capture one page (like the Shopee/GSMArena HARs) to confirm field names before live use.

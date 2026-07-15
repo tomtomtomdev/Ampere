@@ -54,8 +54,9 @@ frontier     = non-dominated (price↓, capability↑) points
 
 Clean-Architecture package under `ampere/` (`domain` → `application` → `ports` → `adapters` →
 `web`); tests in `tests/`; SQLite schema in `ampere/adapters/repos/schema.sql`; seed data in
-`data/seed/`; OS-scheduler install assets in `deploy/`. **M0–M6 are done and green** (242 tests,
-ruff-clean) — the full pipeline runs end-to-end; see PROGRESS for the v2 backlog.
+`data/seed/`; OS-scheduler install assets in `deploy/`. **M0–M8 are done and green** (295 tests,
+ruff-clean) — the full pipeline runs end-to-end (M7 = trust/longevity, M8 = daily push); see
+PROGRESS for the remaining v2 backlog.
 
 ```bash
 uv venv .venv && uv pip install --python .venv -e ".[dev,web]"

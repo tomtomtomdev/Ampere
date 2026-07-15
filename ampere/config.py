@@ -66,3 +66,7 @@ TRUST_WEIGHTS: dict[str, float] = {"rating": 0.5, "reviews": 0.2, "mall": 0.2, "
 TRUST_RATING_BOUND = Bound(4.0, 5.0)  # ID ratings cluster 4.5–5.0; <4.0 reads as a red flag
 # log10(review_count+1): 0 → ~10k reviews = full confidence.
 TRUST_REVIEWS_LOG_BOUND = Bound(0.0, 4.0)
+
+# Daily push notification (SPEC §11.2). OFF by default: no channel is pushed unless the composition
+# root wires a Notifier (env AMPERE_NOTIFY). This only bounds how many frontier points a push lists.
+NOTIFY_FRONTIER_LIMIT = 5

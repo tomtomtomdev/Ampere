@@ -40,6 +40,27 @@ def client(db_path) -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture
+def push_client(db_path):
+    """A client whose app has a notifier wired (composition root), plus the captured messages."""
+    sent: list[str] = []
+
+    class _Capture:
+        kind = "capture"
+
+        def send(self, text: str) -> None:
+            sent.append(text)
+
+    def uow_factory():
+        return SqliteUnitOfWork(db.connect(db_path, check_same_thread=False))
+
+    app = create_app(
+        uow_factory=uow_factory, source_factory=FixtureSource, clock=lambda: _TODAY,
+        notifier_factory=_Capture,
+    )
+    return TestClient(app), sent
+
+
 class TestStaticShell:
     def test_root_serves_the_spa(self, client):
         resp = client.get("/")
@@ -156,3 +177,22 @@ class TestBonusToggles:
         assert on["longevity_bonus_enabled"] is True and on["trust_penalty_enabled"] is True
         off = client.get("/api/settings").json()
         assert off["longevity_bonus_enabled"] is False and off["trust_penalty_enabled"] is False
+
+
+class TestDailyPush:
+    """M8: POST /api/notify is the manual counterpart to the scheduled daily push (SPEC §11.2).
+    It pushes the current snapshot's best-value pick + frontier through the wired notifier."""
+
+    def test_notify_endpoint_pushes_the_digest(self, push_client):
+        client, sent = push_client
+        resp = client.post("/api/notify")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] == "true" and body["sent"] == "true"
+        assert len(sent) == 1 and "frontier" in sent[0].lower()
+
+    def test_notify_endpoint_reports_when_not_configured(self, client):
+        # the default app wires no notifier -> off by default, reports rather than 500s.
+        resp = client.post("/api/notify")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] == "false"
