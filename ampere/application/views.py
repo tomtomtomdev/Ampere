@@ -15,6 +15,7 @@ from datetime import date
 
 from pydantic import BaseModel
 
+from ampere.application.notify_config import notify_masked, resolve_notify_config
 from ampere.application.snapshot import ScoredSnapshot, score_snapshot
 from ampere.config import (
     DEFAULT_KEYWORD,
@@ -50,7 +51,6 @@ class ViewParams(BaseModel):
     price_min: int = DEFAULT_PRICE_MIN
     price_max: int = DEFAULT_PRICE_MAX
     source_kind: str = "fixture"
-    notify_configured: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +223,16 @@ class ChangesView(BaseModel):
     new_arrivals: list[ArrivalRow]
 
 
+class NotifyChannelView(BaseModel):
+    """UI-safe push-channel state (SPEC §11.2). The raw token never leaves the server — only
+    whether one is set + its last-4 hint, so the form can prefill everything but the token."""
+
+    kind: str  # "off" | "stdout" | "telegram"
+    chat_id: str | None = None
+    token_set: bool = False
+    token_hint: str | None = None
+
+
 class SettingsView(BaseModel):
     meta: Meta
     keyword: str
@@ -238,7 +248,8 @@ class SettingsView(BaseModel):
     sources: list[str]
     scoring_version: str
     schedule: Schedule
-    notify_configured: bool = False
+    notify_configured: bool
+    notify: NotifyChannelView
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +455,9 @@ def build_changes(uow: UnitOfWork, snapshot_date: date | None, params: ViewParam
 def build_settings(uow: UnitOfWork, snapshot_date: date | None, params: ViewParams) -> SettingsView:
     ctx = _load_ctx(uow, snapshot_date, params)
     w = params.weights
+    # The effective push channel = persisted settings, else env (§11.2). "Configured" drives the
+    # SHARE buttons; the masked block prefills the form (never the raw token).
+    notify_cfg = resolve_notify_config(uow)
     return SettingsView(
         meta=_meta(ctx, params), keyword=params.keyword,
         price_min=params.price_min, price_max=params.price_max,
@@ -453,7 +467,8 @@ def build_settings(uow: UnitOfWork, snapshot_date: date | None, params: ViewPara
         trust_penalty_enabled=params.trust_penalty_enabled,
         source_kind=params.source_kind, sources=list(_AVAILABLE_SOURCES),
         scoring_version=SCORING_VERSION, schedule=Schedule(last_run=ctx.snapshot_date),
-        notify_configured=params.notify_configured,
+        notify_configured=notify_cfg is not None,
+        notify=NotifyChannelView(**notify_masked(notify_cfg)),
     )
 
 

@@ -13,22 +13,30 @@ Run:  uvicorn ampere.web.api:app --reload   (needs the ``web`` extra installed)
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ampere.adapters.notify import build_notifier
 from ampere.adapters.repos import db
 from ampere.adapters.repos.sqlite_repos import SqliteUnitOfWork
 from ampere.adapters.sources.fixture_source import FixtureSource
 from ampere.application import views
 from ampere.application.demo_seed import bootstrap
 from ampere.application.notify import notify_daily
+from ampere.application.notify_config import (
+    clear_notify_config,
+    notify_masked,
+    resolve_notify_config,
+    save_notify_config,
+)
 from ampere.application.report import build_report, render_report
 from ampere.application.run_daily import catch_up, run_daily
 from ampere.application.views import ViewParams
@@ -65,6 +73,15 @@ class MapRequest(BaseModel):
     device_id: str
 
 
+class NotifyConfigRequest(BaseModel):
+    """Set the push channel from the UI (SPEC §11.2). ``kind`` ∈ {off, stdout, telegram}. A blank
+    ``token`` on an existing telegram channel is treated as "unchanged" (it is never prefilled)."""
+
+    kind: str
+    token: str | None = None
+    chat_id: str | None = None
+
+
 def _weights(w_perf: float | None) -> Weights:
     return Weights(w_perf=w_perf) if w_perf is not None else Weights()
 
@@ -80,13 +97,11 @@ def _params(
     price_min: int,
     price_max: int,
     source_kind: str,
-    notify_configured: bool = False,
 ) -> ViewParams:
     return ViewParams(
         weights=_weights(w_perf), blended=blended, longevity_bonus_enabled=longevity,
         trust_penalty_enabled=trust_penalty, mall_only=mall_only,
         keyword=keyword, price_min=price_min, price_max=price_max, source_kind=source_kind,
-        notify_configured=notify_configured,
     )
 
 
@@ -96,14 +111,29 @@ def create_app(
     source_factory: Callable[[], SearchSource] = FixtureSource,
     clock: Callable[[], date] = date.today,
     on_startup: Callable[[], None] | None = None,
-    notifier_factory: Callable[[], Notifier] | None = None,
+    notifier_factory: Callable[[UnitOfWork], Notifier | None] | None = None,
+    notifier_transport: Callable[[str, dict], None] | None = None,
 ) -> FastAPI:
     """Build the app. ``uow_factory`` returns a fresh UoW per request (composition root wires it).
 
     ``on_startup`` (optional) runs once when the app begins serving — the default app uses it to
     seed the demo DB. Tests omit it (no import-time or startup side effects on the real DB).
-    ``notifier_factory`` (optional) wires the ``POST /api/notify`` push channel; omitted ⇒ off.
+
+    The push channel (SPEC §11.2) is **configured from persisted settings/env**, not hard-wired: by
+    default the factory reads ``resolve_notify_config`` per request and builds a notifier (or
+    returns ``None`` when nothing is configured). ``notifier_transport`` injects the telegram HTTP
+    POST (the offline-testable seam). A test may pass an explicit ``notifier_factory`` to bypass it.
     """
+    if notifier_factory is None:
+
+        def notifier_factory(uow: UnitOfWork) -> Notifier | None:  # noqa: F811 (default impl)
+            cfg = resolve_notify_config(uow, os.environ)
+            if cfg is None:
+                return None
+            return build_notifier(
+                cfg.kind, token=cfg.token, chat_id=cfg.chat_id, transport=notifier_transport,
+            )
+
     lifespan = None
     if on_startup is not None:
 
@@ -197,7 +227,7 @@ def create_app(
             w_perf=w_perf, blended=blended, longevity=longevity, trust_penalty=trust_penalty,
             mall_only=mall_only, keyword=DEFAULT_KEYWORD,
             price_min=DEFAULT_PRICE_MIN, price_max=DEFAULT_PRICE_MAX,
-            source_kind=source_factory().kind, notify_configured=notifier_factory is not None,
+            source_kind=source_factory().kind,
         )
         return views.build_settings(uow, views.current_snapshot(uow), params)
 
@@ -217,16 +247,51 @@ def create_app(
 
     @app.post("/api/notify")
     def notify(uow: UnitOfWork = Depends(get_uow)) -> dict[str, str]:
-        """Push the current snapshot's digest through the wired channel — the manual counterpart to
-        the scheduled daily push (SPEC §11.2). Off by default: with no notifier configured it
-        reports rather than erroring; nothing is sent when the frontier is empty."""
-        if notifier_factory is None:
+        """Push the current snapshot's digest through the configured channel — the manual
+        counterpart to the scheduled daily push (SPEC §11.2). Off by default: with no channel
+        configured it reports rather than erroring; nothing is sent when the frontier is empty."""
+        notifier = notifier_factory(uow)
+        if notifier is None:
             return {"ok": "false", "reason": "no notifier configured"}
         digest = notify_daily(
-            uow, notifier_factory(), snapshot_date=views.current_snapshot(uow),
+            uow, notifier, snapshot_date=views.current_snapshot(uow),
             source_kind=source_factory().kind,
         )
         return {"ok": "true", "sent": "true" if digest is not None else "false"}
+
+    @app.post("/api/settings/notify")
+    def set_notify(body: NotifyConfigRequest, uow: UnitOfWork = Depends(get_uow)) -> dict:
+        """Persist the push channel from the UI (SPEC §11.2). ``kind=off`` clears it; ``telegram``
+        is validated (needs both creds) via ``build_notifier`` before saving. A blank token reuses
+        the stored one (the token is never echoed back, so the form can't resend it). Returns the
+        masked channel state."""
+        kind = body.kind.strip().lower()
+        if kind == "off":
+            clear_notify_config(uow)
+            return notify_masked(None)
+        existing = resolve_notify_config(uow, os.environ)
+        token = body.token or (existing.token if existing else None)
+        chat_id = body.chat_id or (existing.chat_id if existing else None)
+        try:
+            build_notifier(kind, token=token, chat_id=chat_id)  # validate only (no network)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        save_notify_config(uow, kind=kind, token=token, chat_id=chat_id)
+        return notify_masked(resolve_notify_config(uow, os.environ))
+
+    @app.post("/api/settings/notify/test")
+    def test_notify(uow: UnitOfWork = Depends(get_uow)) -> dict[str, str]:
+        """Send a fixed test message through the configured channel to confirm the creds work
+        live (SPEC §11.2). Reports 'not configured' when off; a send failure is caught + reported
+        (never a 500) so a bad token/chat id shows the user the error string."""
+        notifier = notifier_factory(uow)
+        if notifier is None:
+            return {"ok": "false", "reason": "no notifier configured"}
+        try:
+            notifier.send("Ampere connected ✓ — test push from your Ampere settings.")
+        except Exception as exc:  # noqa: BLE001 (surface any transport error to the user)
+            return {"ok": "false", "error": str(exc)}
+        return {"ok": "true"}
 
     @app.get("/api/report", response_class=HTMLResponse)
     def report(uow: UnitOfWork = Depends(get_uow)) -> HTMLResponse:

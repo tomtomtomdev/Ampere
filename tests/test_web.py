@@ -21,6 +21,14 @@ from fastapi.testclient import TestClient
 _TODAY = date(2026, 7, 14)
 
 
+@pytest.fixture(autouse=True)
+def _clean_notify_env(monkeypatch):
+    """Isolate the push-channel tests from the dev's shell: the DB-backed notifier factory resolves
+    from persisted settings ELSE env, so a stray ``AMPERE_NOTIFY`` would make "off" tests flap."""
+    for key in ("AMPERE_NOTIFY", "AMPERE_TELEGRAM_TOKEN", "AMPERE_TELEGRAM_CHAT_ID"):
+        monkeypatch.delenv(key, raising=False)
+
+
 @pytest.fixture
 def db_path(tmp_path):
     path = str(tmp_path / "ampere.db")
@@ -42,7 +50,8 @@ def client(db_path) -> TestClient:
 
 @pytest.fixture
 def push_client(db_path):
-    """A client whose app has a notifier wired (composition root), plus the captured messages."""
+    """A client whose app has a notifier injected directly (bypassing config), plus the captured
+    messages — for exercising the send mechanics of ``POST /api/notify`` (M8)."""
     sent: list[str] = []
 
     class _Capture:
@@ -51,12 +60,14 @@ def push_client(db_path):
         def send(self, text: str) -> None:
             sent.append(text)
 
+    capture = _Capture()
+
     def uow_factory():
         return SqliteUnitOfWork(db.connect(db_path, check_same_thread=False))
 
     app = create_app(
         uow_factory=uow_factory, source_factory=FixtureSource, clock=lambda: _TODAY,
-        notifier_factory=_Capture,
+        notifier_factory=lambda uow: capture,
     )
     return TestClient(app), sent
 
@@ -112,17 +123,6 @@ class TestSettings:
         assert data["keyword"] == "android"
         assert "fixture" in data["sources"]
         assert data["scoring_version"] == "v2.1.0"
-
-    def test_settings_reports_notify_not_configured_by_default(self, client):
-        # M8/M9 follow-up: the SPA "Share now" button must know whether a push channel is wired.
-        # The default app wires no notifier -> off by default, so the button stays inert.
-        data = client.get("/api/settings").json()
-        assert data["notify_configured"] is False
-
-    def test_settings_reports_notify_configured_when_wired(self, push_client):
-        client, _sent = push_client
-        data = client.get("/api/settings").json()
-        assert data["notify_configured"] is True
 
 
 class TestRunNow:
@@ -203,10 +203,83 @@ class TestDailyPush:
         assert len(sent) == 1 and "frontier" in sent[0].lower()
 
     def test_notify_endpoint_reports_when_not_configured(self, client):
-        # the default app wires no notifier -> off by default, reports rather than 500s.
+        # the default app resolves no channel (no DB config, clean env) -> reports rather than 500s.
         resp = client.post("/api/notify")
         assert resp.status_code == 200
         assert resp.json()["ok"] == "false"
+
+
+class TestNotifyChannelConfig:
+    """The push channel is set from the UI + persisted, so both 'Share now' and the daily push work
+    without env vars (SPEC §11.2). The DB-backed factory resolves the channel per request."""
+
+    def test_default_is_off_and_masked(self, client):
+        data = client.get("/api/settings").json()
+        assert data["notify_configured"] is False
+        assert data["notify"] == {
+            "kind": "off", "chat_id": None, "token_set": False, "token_hint": None
+        }
+
+    def test_configure_stdout_enables_and_pushes(self, client):
+        r = client.post("/api/settings/notify", json={"kind": "stdout"})
+        assert r.status_code == 200 and r.json()["kind"] == "stdout"
+        # the channel now resolves -> settings reports configured...
+        assert client.get("/api/settings").json()["notify_configured"] is True
+        # ...and the DB-backed factory builds it, so POST /api/notify actually sends (no injection).
+        assert client.post("/api/notify").json() == {"ok": "true", "sent": "true"}
+
+    def test_configure_telegram_masks_token(self, client):
+        r = client.post(
+            "/api/settings/notify",
+            json={"kind": "telegram", "token": "123456:ABCDEF", "chat_id": "42"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["kind"] == "telegram" and body["chat_id"] == "42"
+        assert body["token_set"] is True and body["token_hint"] == "CDEF"
+        # the raw token never appears anywhere in the settings payload
+        settings = client.get("/api/settings").json()
+        assert "123456:ABCDEF" not in str(settings)
+        assert settings["notify"]["token_set"] is True
+
+    def test_telegram_without_chat_id_is_rejected(self, client):
+        r = client.post("/api/settings/notify", json={"kind": "telegram", "token": "t"})
+        assert r.status_code == 400
+
+    def test_editing_chat_id_keeps_the_saved_token(self, client):
+        client.post(
+            "/api/settings/notify", json={"kind": "telegram", "token": "tok", "chat_id": "1"}
+        )
+        # re-save with only the chat id changed (token left blank, as the masked UI does)
+        r = client.post("/api/settings/notify", json={"kind": "telegram", "chat_id": "2"})
+        assert r.status_code == 200
+        assert r.json()["chat_id"] == "2" and r.json()["token_set"] is True
+
+    def test_off_clears_the_channel(self, client):
+        client.post("/api/settings/notify", json={"kind": "stdout"})
+        client.post("/api/settings/notify", json={"kind": "off"})
+        assert client.get("/api/settings").json()["notify_configured"] is False
+
+    def test_send_test_hits_the_bot_api_via_injected_transport(self, db_path):
+        calls: list[tuple[str, dict]] = []
+
+        def uow_factory():
+            return SqliteUnitOfWork(db.connect(db_path, check_same_thread=False))
+
+        app = create_app(
+            uow_factory=uow_factory, source_factory=FixtureSource, clock=lambda: _TODAY,
+            notifier_transport=lambda url, payload: calls.append((url, payload)),
+        )
+        c = TestClient(app)
+        c.post("/api/settings/notify", json={"kind": "telegram", "token": "TKN", "chat_id": "42"})
+        assert c.post("/api/settings/notify/test").json() == {"ok": "true"}
+        assert len(calls) == 1
+        url, payload = calls[0]
+        assert url == "https://api.telegram.org/botTKN/sendMessage"
+        assert payload["chat_id"] == "42" and "Ampere connected" in payload["text"]
+
+    def test_send_test_reports_when_off(self, client):
+        assert client.post("/api/settings/notify/test").json()["ok"] == "false"
 
 
 class TestReportPage:

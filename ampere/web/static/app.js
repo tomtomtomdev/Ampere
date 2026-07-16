@@ -492,6 +492,32 @@ function renderSettings(data) {
         </div>
       </div>
       <div class="set-section">
+        <div class="set-label">NOTIFICATIONS <span class="dim">· daily push channel (SPEC §11.2)</span></div>
+        <div class="set-fields">
+          <label>channel
+            <select id="notify-kind">
+              ${["off", "stdout", "telegram"].map((k) => `<option value="${k}" ${data.notify.kind === k ? "selected" : ""}>${k === "stdout" ? "stdout (dry-run)" : k}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+        <div class="set-fields mt" id="tg-fields" ${data.notify.kind === "telegram" ? "" : "hidden"}>
+          <label>bot token
+            <input type="password" id="notify-token" autocomplete="off"
+              placeholder="${data.notify.token_set ? "configured ••••" + esc(data.notify.token_hint || "") : "@BotFather token, e.g. 123456:ABC-DEF…"}">
+          </label>
+          <label>chat id
+            <input id="notify-chat" value="${esc(data.notify.chat_id || "")}" placeholder="numeric chat id">
+          </label>
+        </div>
+        <div class="set-run">
+          <div class="dim run-note" id="notify-status">Pick a channel and Save to enable the daily push + the buttons below. Telegram needs a @BotFather bot token + your numeric chat id; the token is stored locally and never shown again.</div>
+          <div class="share-actions">
+            <button class="btn" id="notify-test" ${data.notify_configured ? "" : "disabled"}>Send test</button>
+            <button class="btn btn-primary" id="notify-save">Save channel</button>
+          </div>
+        </div>
+      </div>
+      <div class="set-section">
         <div class="set-label">SHARE <span class="dim">· publish / push the current frontier (SPEC §11.2)</span></div>
         <div class="set-run">
           <div class="dim run-note">${data.notify_configured
@@ -539,6 +565,49 @@ function renderSettings(data) {
         alert("share failed: " + err.message);
       } finally {
         setTimeout(() => { share.disabled = false; share.textContent = label; }, 1600);
+      }
+    };
+  }
+
+  // Notifications: set + persist the push channel (POST /api/settings/notify). The token input is
+  // never prefilled (masked) — a blank token on save reuses the stored one. Save reloads settings
+  // so notify_configured refreshes and the Share now / Send test buttons light up.
+  const kindSel = $("#notify-kind");
+  if (kindSel) kindSel.onchange = () => { $("#tg-fields").hidden = kindSel.value !== "telegram"; };
+
+  $("#notify-save").onclick = async (e) => {
+    const btn = e.target, status = $("#notify-status");
+    const kind = $("#notify-kind").value;
+    const body = { kind };
+    if (kind === "telegram") {
+      const tok = $("#notify-token").value.trim(), chat = $("#notify-chat").value.trim();
+      if (tok) body.token = tok;
+      if (chat) body.chat_id = chat;
+    }
+    btn.disabled = true; const label = btn.textContent; btn.textContent = "saving…";
+    try {
+      await apiPost("/settings/notify", body);
+      load("settings"); // refresh masked state + enable Share now / Send test
+    } catch (err) {
+      btn.disabled = false; btn.textContent = label;
+      status.textContent = "save failed: " + err.message + " (telegram needs both a token and a chat id)";
+    }
+  };
+
+  const testBtn = $("#notify-test");
+  if (testBtn && !testBtn.disabled) {
+    testBtn.onclick = async () => {
+      const status = $("#notify-status");
+      testBtn.disabled = true; const label = testBtn.textContent; testBtn.textContent = "sending…";
+      try {
+        const res = await apiPost("/settings/notify/test");
+        status.textContent = res.ok === "true"
+          ? "✓ test message sent — check your channel"
+          : "test failed: " + (res.error || res.reason || "unknown");
+      } catch (err) {
+        status.textContent = "test failed: " + err.message;
+      } finally {
+        setTimeout(() => { testBtn.disabled = false; testBtn.textContent = label; }, 1200);
       }
     };
   }

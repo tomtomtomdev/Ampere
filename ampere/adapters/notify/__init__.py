@@ -7,6 +7,8 @@ needs ``token`` + ``chat_id``; ``stdout`` is the credential-free dry-run channel
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from ampere.adapters.notify.stdout import StdoutNotifier
 from ampere.adapters.notify.telegram import TelegramNotifier
 from ampere.ports.notifier import Notifier
@@ -18,11 +20,14 @@ def build_notifier(
     token: str | None = None,
     chat_id: str | None = None,
     stream=None,
+    transport: Callable[[str, dict], None] | None = None,
 ) -> Notifier:
     """Instantiate a notifier by kind (``telegram`` | ``stdout``).
 
     Raises ``ValueError`` for an unknown kind, or for ``telegram`` without both credentials — so a
     half-configured push channel fails fast at startup rather than silently dropping the digest.
+    ``transport`` (telegram only) injects the HTTP POST — the offline-testable seam (M5/M6/M8);
+    ``None`` uses the best-effort ``httpx`` default.
     """
     key = kind.lower()
     if key == "stdout":
@@ -32,7 +37,7 @@ def build_notifier(
             raise ValueError(
                 "telegram notifier needs AMPERE_TELEGRAM_TOKEN and AMPERE_TELEGRAM_CHAT_ID"
             )
-        return TelegramNotifier(token=token, chat_id=chat_id)
+        return TelegramNotifier(token=token, chat_id=chat_id, transport=transport)
     raise ValueError(f"unknown notifier kind: {kind!r} (known: stdout, telegram)")
 
 

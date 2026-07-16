@@ -20,6 +20,7 @@ from datetime import date
 from pathlib import Path
 
 from ampere.application.notify import notify_daily
+from ampere.application.notify_config import resolve_notify_config
 from ampere.application.report import build_report, render_report
 from ampere.application.snapshot import score_snapshot
 from ampere.config import (
@@ -196,17 +197,18 @@ class RunConfig:
 def _push_daily_digest(config: RunConfig, uow: UnitOfWork, result: RunResult) -> None:
     """Push the daily digest when a channel is configured (SPEC §11.2) — OFF by default.
 
-    The notifier is built HERE (composition root), never in the ``notify_daily`` use-case, so the
-    application layer stays adapter-free (invariant #1). A push outage must never fail an
-    already-persisted run, so every failure is logged and swallowed — the run stays ``ok``."""
-    if not config.notify_kind:
+    The channel is resolved **DB-first, env-fallback** (``resolve_notify_config``) so a channel set
+    from the web UI drives the scheduled push too — not just env vars. The notifier is built HERE
+    (composition root), never in the ``notify_daily`` use-case, so the application layer stays
+    adapter-free (invariant #1). A push outage must never fail an already-persisted run, so every
+    failure is logged and swallowed — the run stays ``ok``."""
+    cfg = resolve_notify_config(uow, os.environ)
+    if cfg is None:
         return
     try:
         from ampere.adapters.notify import build_notifier
 
-        notifier = build_notifier(
-            config.notify_kind, token=config.telegram_token, chat_id=config.telegram_chat_id,
-        )
+        notifier = build_notifier(cfg.kind, token=cfg.token, chat_id=cfg.chat_id)
         digest = notify_daily(
             uow, notifier, snapshot_date=result.snapshot_date, keyword=config.keyword,
             price_min=config.price_min, price_max=config.price_max, source_kind=result.source_kind,

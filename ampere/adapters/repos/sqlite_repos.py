@@ -151,6 +151,27 @@ class SqliteAliasRepo:
         )
 
 
+class SqliteSettingsRepo:
+    """Key-value app settings (the UI-configurable push channel lives here — §11.2)."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def get(self, key: str) -> str | None:
+        row = self._conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set(self, key: str, value: str) -> None:
+        self._conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    def delete(self, key: str) -> None:
+        self._conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+
+
 # ---------------------------------------------------------------------------
 # Daily data (replaced per snapshot inside a transaction — SC6)
 # ---------------------------------------------------------------------------
@@ -331,6 +352,7 @@ class SqliteUnitOfWork:
         self.scores = SqliteScoreRepo(conn)
         self.sku_rollup = SqliteSkuRollupRepo(conn)
         self.runs = SqliteRunRepo(conn)
+        self.settings = SqliteSettingsRepo(conn)
 
     def close(self) -> None:
         """Close the backing connection. Used by the web app's per-request UoW teardown."""

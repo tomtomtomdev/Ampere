@@ -312,3 +312,29 @@ class TestRunConfigNotifyEnv:
         )
         assert cfg.notify_kind == "telegram"
         assert cfg.telegram_token == "tok" and cfg.telegram_chat_id == "chat"
+
+
+# ---------------------------------------------------------------------------
+# The scheduled push resolves the channel DB-first (a UI-set channel drives it too) — §11.2
+# ---------------------------------------------------------------------------
+class TestDailyPushHonorsDbConfig:
+    @pytest.fixture(autouse=True)
+    def _clean_notify_env(self, monkeypatch):
+        for key in ("AMPERE_NOTIFY", "AMPERE_TELEGRAM_TOKEN", "AMPERE_TELEGRAM_CHAT_ID"):
+            monkeypatch.delenv(key, raising=False)
+
+    def test_db_configured_channel_is_pushed(self, uow, capsys):
+        from ampere.application.notify_config import save_notify_config
+        from ampere.application.run_daily import _push_daily_digest
+
+        result = _run(uow)  # persists a snapshot with a non-empty frontier
+        assert result.frontier_size > 0
+        save_notify_config(uow, kind="stdout")  # configured via the UI/DB, no env
+        _push_daily_digest(RunConfig(), uow, result)
+        assert "frontier" in capsys.readouterr().out.lower()
+
+    def test_nothing_configured_pushes_nothing(self, uow, capsys):
+        from ampere.application.run_daily import _push_daily_digest
+
+        _push_daily_digest(RunConfig(), uow, _run(uow))  # no DB config, clean env
+        assert capsys.readouterr().out == ""

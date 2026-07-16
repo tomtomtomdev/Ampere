@@ -164,6 +164,35 @@ class TestRunRepo:
         assert rows == 1
 
 
+class TestSettingsRepo:
+    """A tiny key-value store for app settings (the UI-configurable push channel lives here)."""
+
+    def test_get_missing_key_is_none(self, uow):
+        assert uow.settings.get("notify.kind") is None
+
+    def test_set_then_get_round_trips(self, uow):
+        uow.settings.set("notify.kind", "telegram")
+        assert uow.settings.get("notify.kind") == "telegram"
+
+    def test_set_overwrites_existing(self, uow):
+        uow.settings.set("notify.kind", "stdout")
+        uow.settings.set("notify.kind", "telegram")
+        assert uow.settings.get("notify.kind") == "telegram"
+
+    def test_delete_removes_the_key(self, uow):
+        uow.settings.set("notify.kind", "telegram")
+        uow.settings.delete("notify.kind")
+        assert uow.settings.get("notify.kind") is None
+
+    def test_delete_missing_key_is_a_noop(self, uow):
+        uow.settings.delete("nope")  # must not raise
+
+    def test_writes_compose_inside_a_transaction(self, uow):
+        with uow.transaction():
+            uow.settings.set("notify.kind", "telegram")
+        assert uow.settings.get("notify.kind") == "telegram"
+
+
 class TestTransactionBoundary:
     def test_rollback_discards_writes(self, luow):
         with luow.transaction():

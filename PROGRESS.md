@@ -4,14 +4,23 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Latest (2026-07-16):** M8/M9 **SPA share/report buttons** follow-up done — the Settings screen
-now has a **SHARE** section: "Open report ↗" (opens `GET /api/report` in a new tab, always
-available) + "Share now" (`POST /api/notify`, enabled only when a push channel is wired). A new
-`notify_configured: bool` rides through `ViewParams`→`SettingsView` (a composition-root fact, like
-`source_kind`) so the button honestly reflects config and never posts into the void. **Test-first**
-(+2 `test_web` settings tests), ruff-clean, **310 tests**; end-to-end verified (default → button
-disabled + notify reports off; wired → button enabled + push sends). Endpoints unchanged (existed
-since M8/M9); only the JS/HTML/CSS + the `notify_configured` surface are new. Un-committed.
+**Latest (2026-07-16):** **UI-configurable Telegram push channel** done — the Settings screen's new
+**NOTIFICATIONS** block sets the channel (`off`/`stdout`/`telegram`) + bot token + chat id,
+**persisted** so both "Share now" and the scheduled daily push work without env vars or a restart.
+New `settings(key,value)` SQLite KV table (+ `SettingsRepo` port + `SqliteSettingsRepo`, on the
+`UnitOfWork`); new adapter-free `application/notify_config.py` (`resolve_notify_config` = **DB
+overrides env**, `save`/`clear`, `notify_masked`) that both the web app and `run_daily` use, so the
+push resolves identically in both. Web: `create_app`'s `notifier_factory` is now DB-backed
+(`(uow)→Notifier|None`, reads `resolve_notify_config`), `GET /api/settings` carries a **masked**
+`notify` block (`token_set`+last-4 hint, **raw token never echoed**) + a dynamic `notify_configured`,
+`POST /api/settings/notify` (validate via `build_notifier` → 400, save/clear, blank-token = keep
+existing) + `POST /api/settings/notify/test` (live send behind the injected-transport seam). Token
+stored plaintext in the local DB (accepted for a local single-user tool). **Test-first**, ruff-clean,
+**336 tests** (+26); end-to-end verified via a live `TestClient` (stdout push sends; telegram Send
+test hits the Bot API URL/payload offline; token never leaks; blank-token edit keeps creds). Closes
+the M8 "confirm `TelegramNotifier` posts" gap for offline verification (a real bot still needed for a
+true live post). Un-committed. **Prior (committed `c9e48e5`):** M8/M9 **SPA share/report buttons** —
+Settings SHARE section with "Open report ↗" (`GET /api/report`) + "Share now" (`POST /api/notify`).
 
 **Phase:** M9 (v2 backlog) done + **committed `b5f7494`** — **static shareable frontier report**
 (SPEC §11.2), **test-first** and green (ruff clean; M9 added +13 — 12 `test_report`, 1 `test_web`). The
@@ -72,6 +81,39 @@ first start, then catches up).
 
 ## Decisions log
 
+- **UI-configurable Telegram push channel done (2026-07-16):**
+  - **Why:** the push channel was env-only (`AMPERE_NOTIFY*`, read once at process start), and the
+    web default app wired **no** notifier at all — so in the running UI "Share now" was permanently
+    disabled and the web catch-up never pushed. Now the channel is set + persisted from Settings.
+  - **Storage = a SQLite `settings` KV table** (chosen over a config file): the web app and
+    `run_daily` already share the DB → one source of truth; `create_schema` is `IF NOT EXISTS`, so
+    existing DBs pick up the table with no migration. `SettingsRepo` port + `SqliteSettingsRepo`
+    compose inside the existing `transaction()` boundary like the other repos; added to the
+    `UnitOfWork` Protocol (the `@runtime_checkable` conformance test still passes).
+  - **One resolver, DB-over-env, adapter-free.** `application/notify_config.py:resolve_notify_config`
+    (imports only the `SettingsRepo` port + env — invariant #1) returns the effective channel: a
+    stored `notify.kind` wins, else the env vars, else `None`; a half-configured telegram (missing a
+    cred) resolves to `None` (reads as OFF, never half-built). Both composition roots — `web.api`'s
+    DB-backed `notifier_factory` and `run_daily._push_daily_digest` — call it, so a UI-set token
+    drives the scheduled push too, not just "Share now". The notifier is still built **only** in the
+    roots via `build_notifier` (application layer imports no adapter).
+  - **`notifier_factory` became `(uow) → Notifier | None`** (was `() → Notifier`, injected). The
+    default is DB-backed; `POST /api/notify` now checks the returned notifier for `None` instead of
+    the factory. Tests can still inject a factory (the `push_client` fixture) or an injected
+    `notifier_transport` (telegram, offline). This **superseded** the `ViewParams.notify_configured`
+    field added for the SPA buttons the same day — `build_settings` now sources `notify_configured`
+    + the masked block straight from `resolve_notify_config` (reverted the ViewParams threading).
+  - **Token never leaves the server.** `GET /api/settings` returns a masked `notify`
+    (`kind`/`chat_id`/`token_set`/`token_hint`=last-4) — the form prefills everything but the token;
+    a blank token on save reuses the stored one (so editing only the chat id can't wipe the token).
+    Validation reuses `build_notifier`'s fail-fast (→ 400). `POST …/notify/test` sends a fixed
+    "connected ✓" message through the same injected-transport seam (offline-testable; a real bot API
+    call is best-effort/untested like the httpx fetchers). Plaintext-in-local-DB accepted (documented
+    out-of-scope: encryption-at-rest / keychain), same trust as an env var in a launchd plist.
+  - **TDD:** settings-repo round-trip, `resolve_notify_config` precedence + masking
+    (`test_notify_config.py`), web endpoint tests (stdout push, telegram masked + Send-test capture,
+    400, blank-token merge, off), and a `run_daily` DB-first push test. **336 tests**, ruff-clean.
+    Un-committed.
 - **SPA share/report buttons done (2026-07-16):**
   - **Closes the M8/M9 UI gap.** The `POST /api/notify` (M8) and `GET /api/report` (M9) endpoints
     existed but had no SPA affordance ("the JS was left untouched"). Added a **SHARE** section to the
@@ -88,7 +130,8 @@ first start, then catches up).
     end-to-end (default → disabled/off; wired → enabled + 1 message sent).
   - **No new endpoints, no schema change, no new deps.** Only `notify_configured` + the SPA
     JS/HTML/CSS are new. `render_report` stays pure; the report opens even with an empty frontier.
-    Un-committed.
+    Committed `c9e48e5`. (Its `ViewParams.notify_configured` was **superseded the same day** by the
+    push-channel work above — `build_settings` now sources it from `resolve_notify_config`.)
 - **M9 static shareable report done (2026-07-15):**
   - **The other half of §11.2.** M8 built the push *channel*; M9 builds the shareable *artifact* —
     "keep the frontier/report shareable (a static public page later)". A `GET /api/report` serves it
@@ -501,9 +544,12 @@ first start, then catches up).
 - [x] ~~Telegram daily push (Relay/Courier style)~~ — **done (M8):** `Notifier` port +
       `application/notify.py` digest read model + `Telegram`/`Stdout` adapters behind
       `build_notifier`, wired into `main()` + `POST /api/notify`, **off by default**, injected
-      transport, TDD (§11.2). Remaining is **live-only**: a real bot token + chat id to confirm
-      `TelegramNotifier` posts (payload asserted, no live call yet — same posture as the httpx
-      fetchers). The affiliate `tracking_link` rides inline in the push (already shareable).
+      transport, TDD (§11.2). **Configurable from the UI (2026-07-16):** the Settings NOTIFICATIONS
+      block sets channel + token + chat id (persisted in `settings`), a "Send test" button posts a
+      live message, and both "Share now" + the daily push resolve DB-first. Remaining is **live-only**:
+      point it at a real bot token + chat id and click Send test to confirm a real Telegram post lands
+      (the Bot API URL/payload is asserted offline, same posture as the httpx fetchers). The affiliate
+      `tracking_link` rides inline in the push (already shareable).
 - [ ] Confirm affiliate access (Involve Asia / Accesstrade) for Shopee ID feed. **Still blocks
       validating `AffiliateFeedSource.parse_offer` against a real feed** — the schema is assumed;
       capture one page (like the Shopee/GSMArena HARs) to confirm field names before live use.

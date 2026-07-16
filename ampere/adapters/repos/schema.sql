@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS aliases (
     device_id    TEXT NOT NULL REFERENCES devices(id)
 );
 
+-- App settings (UI-configurable, slowly-changing). Key-value; the push-channel config
+-- (notify.kind / notify.telegram_token / notify.telegram_chat_id) lives here so the web UI and the
+-- scheduled run_daily job share one source of truth (SPEC §11.2).
+CREATE TABLE IF NOT EXISTS settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT
+);
+
 -- Daily data (fast-moving) ----------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS listings (
     id                 TEXT NOT NULL,          -- shopee_id

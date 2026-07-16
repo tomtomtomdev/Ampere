@@ -246,7 +246,9 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14p
 .set-section { background: var(--panel); padding: 16px 18px; }
 .set-fields { display: flex; gap: 14px; flex-wrap: wrap; }
 .set-fields label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--text-muted); }
-.set-fields input { background: var(--bg); border: 1px solid var(--border-2); color: var(--text); font-family: inherit; font-size: 12px; padding: 7px 10px; }
+.set-fields input, .set-fields select { background: var(--bg); border: 1px solid var(--border-2); color: var(--text); font-family: inherit; font-size: 12px; padding: 7px 10px; }
+.set-fields.mt { margin-top: 12px; }
+#notify-token, #notify-chat { min-width: 240px; }
 .perf-chips { display: flex; gap: 10px; flex-wrap: wrap; font-size: 10px; color: var(--text-muted); margin-top: 12px; }
 .perf-chip { border: 1px solid var(--border-2); padding: 4px 8px; }
 .w-batt-chip { border-color: var(--border-accent); color: var(--text-dim); }

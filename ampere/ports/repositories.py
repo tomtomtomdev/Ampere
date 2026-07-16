@@ -52,6 +52,14 @@ class SkuRollupRepo(Protocol):
     def replace_snapshot(self, snapshot_date: date, rollups: list[SkuRollup]) -> None: ...
 
 
+class SettingsRepo(Protocol):
+    """A tiny key-value store for app settings (e.g. the UI-configurable push channel, §11.2)."""
+
+    def get(self, key: str) -> str | None: ...
+    def set(self, key: str, value: str) -> None: ...
+    def delete(self, key: str) -> None: ...
+
+
 class RunRepo(Protocol):
     def last_successful(self) -> date | None: ...
     def start(self, snapshot_date: date, source_kind: str) -> int:
@@ -77,6 +85,7 @@ class UnitOfWork(Protocol):
     scores: ScoreRepo
     sku_rollup: SkuRollupRepo
     runs: RunRepo
+    settings: SettingsRepo
 
     def transaction(self) -> AbstractContextManager[None]:
         """A commit-on-success / rollback-on-exception scope around a set of writes."""
