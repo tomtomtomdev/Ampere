@@ -113,6 +113,17 @@ class TestSettings:
         assert "fixture" in data["sources"]
         assert data["scoring_version"] == "v2.1.0"
 
+    def test_settings_reports_notify_not_configured_by_default(self, client):
+        # M8/M9 follow-up: the SPA "Share now" button must know whether a push channel is wired.
+        # The default app wires no notifier -> off by default, so the button stays inert.
+        data = client.get("/api/settings").json()
+        assert data["notify_configured"] is False
+
+    def test_settings_reports_notify_configured_when_wired(self, push_client):
+        client, _sent = push_client
+        data = client.get("/api/settings").json()
+        assert data["notify_configured"] is True
+
 
 class TestRunNow:
     def test_run_endpoint_triggers_a_snapshot(self, client):

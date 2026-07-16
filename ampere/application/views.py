@@ -50,6 +50,7 @@ class ViewParams(BaseModel):
     price_min: int = DEFAULT_PRICE_MIN
     price_max: int = DEFAULT_PRICE_MAX
     source_kind: str = "fixture"
+    notify_configured: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +238,7 @@ class SettingsView(BaseModel):
     sources: list[str]
     scoring_version: str
     schedule: Schedule
+    notify_configured: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -451,6 +453,7 @@ def build_settings(uow: UnitOfWork, snapshot_date: date | None, params: ViewPara
         trust_penalty_enabled=params.trust_penalty_enabled,
         source_kind=params.source_kind, sources=list(_AVAILABLE_SOURCES),
         scoring_version=SCORING_VERSION, schedule=Schedule(last_run=ctx.snapshot_date),
+        notify_configured=params.notify_configured,
     )
 
 

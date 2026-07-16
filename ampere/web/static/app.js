@@ -491,6 +491,18 @@ function renderSettings(data) {
           <div><div class="accent">SCHEDULE ACTIVE</div><div class="dim">daily ${esc(data.schedule.time)} · last run ${esc(data.schedule.last_run || "—")}</div></div>
         </div>
       </div>
+      <div class="set-section">
+        <div class="set-label">SHARE <span class="dim">· publish / push the current frontier (SPEC §11.2)</span></div>
+        <div class="set-run">
+          <div class="dim run-note">${data.notify_configured
+            ? "Pushes the best-value pick + Pareto frontier through the configured channel — the manual counterpart to the daily 06:00 push."
+            : "No push channel configured. Set <code>AMPERE_NOTIFY</code> (telegram / stdout) to enable the daily push and this button."}</div>
+          <div class="share-actions">
+            <button class="btn" id="open-report">Open report ↗</button>
+            <button class="btn btn-primary" id="share-now" ${data.notify_configured ? "" : "disabled"}>Share now</button>
+          </div>
+        </div>
+      </div>
     </div>`;
 
   wireWeightSlider("settings");
@@ -509,6 +521,27 @@ function renderSettings(data) {
       alert("run failed: " + err.message);
     }
   };
+
+  // Open report: the self-contained shareable page (GET /api/report). Always available — it renders
+  // even for an empty frontier — so it opens in a new tab regardless of the push channel.
+  $("#open-report").onclick = () => window.open("/api/report", "_blank", "noopener");
+
+  // Share now: the manual counterpart to the scheduled daily push (POST /api/notify). Disabled when
+  // no channel is wired (notify_configured=false), so it never posts into the void.
+  const share = $("#share-now");
+  if (share && !share.disabled) {
+    share.onclick = async () => {
+      const label = share.textContent; share.disabled = true; share.textContent = "sharing…";
+      try {
+        const res = await apiPost("/notify");
+        share.textContent = res.sent === "true" ? "✓ pushed to channel" : "nothing to send — empty frontier";
+      } catch (err) {
+        alert("share failed: " + err.message);
+      } finally {
+        setTimeout(() => { share.disabled = false; share.textContent = label; }, 1600);
+      }
+    };
+  }
 }
 
 // --- util + boot -----------------------------------------------------------------------------

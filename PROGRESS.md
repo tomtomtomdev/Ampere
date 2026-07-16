@@ -4,8 +4,17 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Phase:** M9 (v2 backlog) done — **static shareable frontier report** (SPEC §11.2), **test-first**
-and green (ruff clean + **308 tests**: +13 for M9 — 12 `test_report`, 1 `test_web` report page). The
+**Latest (2026-07-16):** M8/M9 **SPA share/report buttons** follow-up done — the Settings screen
+now has a **SHARE** section: "Open report ↗" (opens `GET /api/report` in a new tab, always
+available) + "Share now" (`POST /api/notify`, enabled only when a push channel is wired). A new
+`notify_configured: bool` rides through `ViewParams`→`SettingsView` (a composition-root fact, like
+`source_kind`) so the button honestly reflects config and never posts into the void. **Test-first**
+(+2 `test_web` settings tests), ruff-clean, **310 tests**; end-to-end verified (default → button
+disabled + notify reports off; wired → button enabled + push sends). Endpoints unchanged (existed
+since M8/M9); only the JS/HTML/CSS + the `notify_configured` surface are new. Un-committed.
+
+**Phase:** M9 (v2 backlog) done + **committed `b5f7494`** — **static shareable frontier report**
+(SPEC §11.2), **test-first** and green (ruff clean; M9 added +13 — 12 `test_report`, 1 `test_web`). The
 publishable sibling of the M8 push: a **self-contained HTML page** (inline CSS + an inline-SVG
 capability-vs-price scatter, **no external assets**) of the best-value pick + the Pareto frontier,
 carrying each listing's outbound/affiliate link. New `application/report.py` = a read model that
@@ -22,21 +31,21 @@ No schema change, no new deps. **End-to-end verified (scratch):** demo snapshot 
 doc (7 points / 7 `<circle>`s / 4-row frontier / 0 external assets); `ampere-run-daily
 AMPERE_REPORT_PATH=…` on the pre-refresh real seed writes a valid page with an empty frontier (frontier
 0) and exits 0.
-Un-committed. **Prior:** M8 done — daily push notification (§11.2): `Notifier` port +
+**Prior:** M8 done — daily push notification (§11.2): `Notifier` port +
 `application/notify.py` digest read model (pure `render_digest`) + Telegram/stdout adapters behind
 `build_notifier`, wired into `main()` + `POST /api/notify`, off by default + failure-isolated,
 injected transport (committed `c455215`). M7 done — trust composition (§5.6) + longevity bonus (§11.1)
 behind off-by-default toggles, `SCORING_VERSION` v2.1.0 unchanged (SC3). M6 done — GSMArena scrapers +
 `refresh_catalog` + real seed + `main()`/`catch_up` (SC8) + launchd/cron. (Full detail in the
 decisions log.)
-**Next action:** commit M9. The remaining v2 backlog is gated on **external access** (not buildable
-offline): (1) a real Telegram bot token + chat id to confirm `TelegramNotifier` posts (payload
-asserted, no live call yet); (2) capture a real affiliate feed to confirm `AffiliateFeedSource.
-parse_offer`, then the first **live** GSMArena `refresh_catalog` (fills the ID-band SoC benchmarks →
-the push + report start carrying a real frontier). Offline follow-ups if wanted: wire a "share now" /
-"open report" button into the SPA (`POST /api/notify` + `GET /api/report` already exist; JS untouched);
-expand `devices_seed.csv` + resolve the open #3 imputation question. Un-automated UI step from M7:
-click-through the two Settings toggles in a browser.
+**Next action:** commit the SPA share/report buttons follow-up. The remaining v2 backlog is gated on
+**external access** (not buildable offline): (1) a real Telegram bot token + chat id to confirm
+`TelegramNotifier` posts (payload asserted, no live call yet); (2) capture a real affiliate feed to
+confirm `AffiliateFeedSource.parse_offer`, then the first **live** GSMArena `refresh_catalog` (fills
+the ID-band SoC benchmarks → the push + report start carrying a real frontier). Offline follow-ups if
+wanted: expand `devices_seed.csv` + resolve the open #3 imputation question. Un-automated UI steps to
+click-through in a browser: the two M7 Settings toggles, and the new SHARE buttons ("Open report" is
+wired to a real page; "Share now" needs a channel configured to light up).
 **Env:** Python venv at `.venv` (Python 3.14 available; target 3.12).
 `uv pip install --python .venv -e ".[dev,web]"` (the `dev` extra self-references `ampere[scrape]` =
 `beautifulsoup4`; lxml optional, stdlib `html.parser` fallback). Headless run:
@@ -63,6 +72,23 @@ first start, then catches up).
 
 ## Decisions log
 
+- **SPA share/report buttons done (2026-07-16):**
+  - **Closes the M8/M9 UI gap.** The `POST /api/notify` (M8) and `GET /api/report` (M9) endpoints
+    existed but had no SPA affordance ("the JS was left untouched"). Added a **SHARE** section to the
+    Settings screen — the same "manual counterpart to the automatic daily" family as the existing
+    "Run now" button, so it lives next to it. "Open report ↗" `window.open`s the report; "Share now"
+    POSTs the digest and reflects the response (`sent:true` → "✓ pushed", `sent:false` → "nothing to
+    send — empty frontier").
+  - **`notify_configured` is a composition-root fact, surfaced like `source_kind`.** Added
+    `notify_configured: bool` to `ViewParams`→`SettingsView`; the `/api/settings` endpoint sets it
+    from `notifier_factory is not None`. The button is `disabled` when no channel is wired, so it
+    can't post into the void (matches M8's off-by-default posture — the endpoint still reports
+    cleanly rather than 500ing). This is the one **TDD-able** surface of an otherwise pure-JS change
+    (2 new `test_web` settings tests, red→green); the JS itself is `node --check`ed + driven
+    end-to-end (default → disabled/off; wired → enabled + 1 message sent).
+  - **No new endpoints, no schema change, no new deps.** Only `notify_configured` + the SPA
+    JS/HTML/CSS are new. `render_report` stays pure; the report opens even with an empty frontier.
+    Un-committed.
 - **M9 static shareable report done (2026-07-15):**
   - **The other half of §11.2.** M8 built the push *channel*; M9 builds the shareable *artifact* —
     "keep the frontier/report shareable (a static public page later)". A `GET /api/report` serves it

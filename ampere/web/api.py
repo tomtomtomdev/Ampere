@@ -80,11 +80,13 @@ def _params(
     price_min: int,
     price_max: int,
     source_kind: str,
+    notify_configured: bool = False,
 ) -> ViewParams:
     return ViewParams(
         weights=_weights(w_perf), blended=blended, longevity_bonus_enabled=longevity,
         trust_penalty_enabled=trust_penalty, mall_only=mall_only,
         keyword=keyword, price_min=price_min, price_max=price_max, source_kind=source_kind,
+        notify_configured=notify_configured,
     )
 
 
@@ -195,7 +197,7 @@ def create_app(
             w_perf=w_perf, blended=blended, longevity=longevity, trust_penalty=trust_penalty,
             mall_only=mall_only, keyword=DEFAULT_KEYWORD,
             price_min=DEFAULT_PRICE_MIN, price_max=DEFAULT_PRICE_MAX,
-            source_kind=source_factory().kind,
+            source_kind=source_factory().kind, notify_configured=notifier_factory is not None,
         )
         return views.build_settings(uow, views.current_snapshot(uow), params)
 
