@@ -19,7 +19,7 @@ stored plaintext in the local DB (accepted for a local single-user tool). **Test
 **336 tests** (+26); end-to-end verified via a live `TestClient` (stdout push sends; telegram Send
 test hits the Bot API URL/payload offline; token never leaks; blank-token edit keeps creds). Closes
 the M8 "confirm `TelegramNotifier` posts" gap for offline verification (a real bot still needed for a
-true live post). Un-committed. **Prior (committed `c9e48e5`):** M8/M9 **SPA share/report buttons** —
+true live post). **Committed `d5f44fa`.** **Prior (committed `c9e48e5`):** M8/M9 **SPA share/report buttons** —
 Settings SHARE section with "Open report ↗" (`GET /api/report`) + "Share now" (`POST /api/notify`).
 
 **Phase:** M9 (v2 backlog) done + **committed `b5f7494`** — **static shareable frontier report**
@@ -47,7 +47,8 @@ injected transport (committed `c455215`). M7 done — trust composition (§5.6) 
 behind off-by-default toggles, `SCORING_VERSION` v2.1.0 unchanged (SC3). M6 done — GSMArena scrapers +
 `refresh_catalog` + real seed + `main()`/`catch_up` (SC8) + launchd/cron. (Full detail in the
 decisions log.)
-**Next action:** commit the SPA share/report buttons follow-up. The remaining v2 backlog is gated on
+**Next action:** the offline-buildable pipeline is complete and committed (HEAD `d5f44fa`, working
+tree clean, **336 tests** green + ruff-clean as of 2026-07-19). The remaining v2 backlog is gated on
 **external access** (not buildable offline): (1) a real Telegram bot token + chat id to confirm
 `TelegramNotifier` posts (payload asserted, no live call yet); (2) capture a real affiliate feed to
 confirm `AffiliateFeedSource.parse_offer`, then the first **live** GSMArena `refresh_catalog` (fills
@@ -113,7 +114,7 @@ first start, then catches up).
   - **TDD:** settings-repo round-trip, `resolve_notify_config` precedence + masking
     (`test_notify_config.py`), web endpoint tests (stdout push, telegram masked + Send-test capture,
     400, blank-token merge, off), and a `run_daily` DB-first push test. **336 tests**, ruff-clean.
-    Un-committed.
+    Committed `d5f44fa`.
 - **SPA share/report buttons done (2026-07-16):**
   - **Closes the M8/M9 UI gap.** The `POST /api/notify` (M8) and `GET /api/report` (M9) endpoints
     existed but had no SPA affordance ("the JS was left untouched"). Added a **SHARE** section to the
