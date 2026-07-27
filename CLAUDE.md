@@ -54,14 +54,19 @@ frontier     = non-dominated (price↓, capability↑) points
 
 Clean-Architecture package under `ampere/` (`domain` → `application` → `ports` → `adapters` →
 `web`); tests in `tests/`; SQLite schema in `ampere/adapters/repos/schema.sql`; seed data in
-`data/seed/`; OS-scheduler install assets in `deploy/`. **M0–M9 are done and green** (308 tests,
-ruff-clean) — the full pipeline runs end-to-end (M7 = trust/longevity, M8 = daily push, M9 =
-shareable HTML report); see PROGRESS for the remaining v2 backlog.
+`data/seed/`; OS-scheduler install assets in `deploy/`; one-step installer at `install.sh`.
+**M0–M9 are done and green** (358 tests, ruff-clean) — the full pipeline runs end-to-end
+(M7 = trust/longevity, M8 = daily push, M9 = shareable HTML report); see PROGRESS for the
+remaining v2 backlog.
 
 ```bash
-uv venv .venv && uv pip install --python .venv -e ".[dev,web]"
+./install.sh                 # venv + deps + verify + a seeded local DB (--dry-run to preview)
 .venv/bin/pytest && .venv/bin/ruff check ampere tests   # keep both green (ruff-clean is an invariant)
 ```
+
+`install.sh` is a shipped deliverable, tested via its inert `--dry-run` seam (`tests/test_install.py`)
+like the `deploy/` assets. It renders the templates in `deploy/` rather than carrying its own copy of
+the schedule — keep it that way so the schedule has one source of truth.
 
 The domain math (`scoring.py`, `frontier.py`, `resolve.py`) was ported **test-first** from
 `design/Ampere.dc.html` (never pasted). When extending, keep the workflow: write the failing test

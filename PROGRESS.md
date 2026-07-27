@@ -4,7 +4,27 @@ Living status. Update every session. Newest entry on top.
 
 ## Current state
 
-**Latest (2026-07-16):** **UI-configurable Telegram push channel** done — the Settings screen's new
+**Latest (2026-07-27):** **one-step installer + README refresh** — housekeeping, no behaviour change
+to the pipeline. New root **`install.sh`**: finds Python ≥3.12 (prefers `uv`, falls back to
+`venv`+`pip`), creates `.venv`, installs `-e ".[dev,web]"`, runs pytest+ruff, creates the data home
+and seeds a local DB with **one offline (`AMPERE_SOURCE=fixture`) run** — installing never touches
+the live marketplace. `--schedule` installs the OS scheduler by **rendering the shipped `deploy/`
+templates** (never inlining a second copy of the 06:00 schedule, so `test_deploy_assets.py` stays
+the single source of truth); `--dry-run` prints the plan and mutates nothing; also `--home`,
+`--no-test`, `--no-seed`, `--help`. Safe to re-run (venv reused; the run is idempotent per
+`snapshot_date`; a missing `crontab`/`launchctl` is reported, not a crash). **Fixed a real footgun:**
+the documented Linux install was `crontab deploy/cron/ampere.crontab`, which **replaces the user's
+entire crontab** — both the script and `deploy/README.md` now read `crontab -l` and **append**
+(and skip if an ampere entry already exists). **Test-first** via the inert `--dry-run` seam —
+new `tests/test_install.py` (+22, incl. a `bash -n` parse check and doc-sync guards), **358 tests**
+green, ruff-clean. **README was stale** (frozen at M6: "242 tests", no M7/M8/M9, layout missing
+`notify/`+`report.py`) — rewritten with an Install section, the real module layout, a "Share the
+result" section (push + report), and an accurate status. CLAUDE.md test count corrected 308→358.
+**Verified for real, not just dry-run:** full install into a scratch home seeded 13 chipsets /
+10 devices and ran the snapshot; re-run correctly skipped ("already ran today"); the UI booted
+against the installer-seeded DB (`/` 200, `/api/dashboard` live, `/api/report` 200).
+
+**Prior (2026-07-16):** **UI-configurable Telegram push channel** done — the Settings screen's new
 **NOTIFICATIONS** block sets the channel (`off`/`stdout`/`telegram`) + bot token + chat id,
 **persisted** so both "Share now" and the scheduled daily push work without env vars or a restart.
 New `settings(key,value)` SQLite KV table (+ `SettingsRepo` port + `SqliteSettingsRepo`, on the
@@ -47,8 +67,8 @@ injected transport (committed `c455215`). M7 done — trust composition (§5.6) 
 behind off-by-default toggles, `SCORING_VERSION` v2.1.0 unchanged (SC3). M6 done — GSMArena scrapers +
 `refresh_catalog` + real seed + `main()`/`catch_up` (SC8) + launchd/cron. (Full detail in the
 decisions log.)
-**Next action:** the offline-buildable pipeline is complete and committed (HEAD `d5f44fa`, working
-tree clean, **336 tests** green + ruff-clean as of 2026-07-19). The remaining v2 backlog is gated on
+**Next action:** the offline-buildable pipeline is complete and committed (working tree clean,
+**358 tests** green + ruff-clean as of 2026-07-27). The remaining v2 backlog is gated on
 **external access** (not buildable offline): (1) a real Telegram bot token + chat id to confirm
 `TelegramNotifier` posts (payload asserted, no live call yet); (2) capture a real affiliate feed to
 confirm `AffiliateFeedSource.parse_offer`, then the first **live** GSMArena `refresh_catalog` (fills
@@ -56,7 +76,8 @@ the ID-band SoC benchmarks → the push + report start carrying a real frontier)
 wanted: expand `devices_seed.csv` + resolve the open #3 imputation question. Un-automated UI steps to
 click-through in a browser: the two M7 Settings toggles, and the new SHARE buttons ("Open report" is
 wired to a real page; "Share now" needs a channel configured to light up).
-**Env:** Python venv at `.venv` (Python 3.14 available; target 3.12).
+**Env:** `./install.sh` does the whole setup (see above); the manual equivalent is a venv at `.venv`
+(target Python 3.12) +
 `uv pip install --python .venv -e ".[dev,web]"` (the `dev` extra self-references `ampere[scrape]` =
 `beautifulsoup4`; lxml optional, stdlib `html.parser` fallback). Headless run:
 `AMPERE_SOURCE=fixture .venv/bin/ampere-run-daily`. Daily push (off by default): add

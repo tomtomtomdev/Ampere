@@ -7,6 +7,11 @@ The daily fetch runs **automatically once per day; the UI's "Run now" is only a 
 Runs are **idempotent per `snapshot_date`** (SC6), so triggering twice in a day is harmless: the
 second run replaces rather than duplicates. That is what makes catch-up safe.
 
+> **The short way:** `./install.sh --schedule` from the repo root does everything below —
+> renders the template for your platform, creates the data/log dirs, and loads it. On Linux it
+> **appends** to your existing crontab. The manual steps in this file are the fallback (and the
+> reference for what the script does).
+
 ## Configuration (environment variables)
 
 `ampere-run-daily` reads its config from the environment (`RunConfig.from_env`):
@@ -79,12 +84,15 @@ launchctl unload ~/Library/LaunchAgents/id.co.tuntun.ampere.run-daily.plist
 ## Linux — cron
 
 `cron/ampere.crontab` has the 06:00 daily line plus an `@reboot` catch-up line. Edit the paths,
-then install:
+then install — **append**, don't replace:
 
 ```sh
-crontab deploy/cron/ampere.crontab      # replaces the current crontab; or paste the lines in
+# `crontab <file>` REPLACES your whole crontab. Read the existing one and add to it instead:
+{ crontab -l 2>/dev/null; cat deploy/cron/ampere.crontab; } | crontab -
 crontab -l                              # verify
 ```
+
+(`./install.sh --schedule` does exactly this, and skips it if an ampere entry is already there.)
 
 ## Catch-up, three ways (SC8)
 
